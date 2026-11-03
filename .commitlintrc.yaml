@@ -1,0 +1,13 @@
+# Testbed file contract:
+# Purpose: commitlint config for the lefthook commit-msg hook and CI. The rules live in the
+#          @stackra/commitlint-config preset; this repo only turns the issue-key rule on with its Linear prefix
+#          (feat/fix/refactor/perf commits carry a `Refs: STA-n` footer).
+# Owner: release-operations
+# Secrets: forbidden
+extends:
+  - "@stackra/commitlint-config"
+rules:
+  refs-issue-key:
+    - 2
+    - always
+    - STA

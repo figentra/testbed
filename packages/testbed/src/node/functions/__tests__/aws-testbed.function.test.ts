@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `awsTestbed` under Pulumi's mocks: the provider is pinned to eu-west-1; the security group
  *          allows SSH only from the allowlist; the launch template resolves the AMI from the SSM parameter, requires
  *          IMDSv2, has a 40 GB root and a 200 GB data volume deleted with the instance, and its user data holds ids
@@ -10,8 +10,9 @@
  *          pipeline is weekly; the job Dockerfile's defaults equal the pins; a given VPC and subnets are used and
  *          `groups: false` declares no Auto Scaling group and no launch template; a plan without a project writes an
  *          empty identity.
- * Boundary: test only; no cloud is called and no state is written (`pulumi.runtime.setMocks`). Reads the repository's
- *           `pnpm-lock.yaml` as the lockfile input.
+ * Boundary: test only; no cloud is called and no state is written (`pulumi.runtime.setMocks`). The lockfile input is
+ *           the small fixture in `fixtures/` (a lockfile with its pnpm-workspace.yaml, .pnpmfile.mjs and .npmrc), not
+ *           core's.
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484 (Enforcement); ADR 0173.
  */
@@ -19,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import * as pulumi from "@pulumi/pulumi";
-import { beforeAll, describe, expect, it } from "@stackra/testing";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { TOOLCHAIN_PINS } from "#core/constants/toolchain-pins.constant";
 import { testbedPlan } from "#core/functions/testbed-plan.function";
@@ -35,7 +36,7 @@ type Registered = {
 };
 
 const registered: Registered[] = [];
-const LOCKFILE = fileURLToPath(new URL("../../../../../../../pnpm-lock.yaml", import.meta.url));
+const LOCKFILE = fileURLToPath(new URL("fixtures/pnpm-lock.yaml", import.meta.url));
 const PLAN = testbedPlan({ identityId: "identity-1", ciGateProjectId: "project-1" });
 
 let stack: AwsTestbed;
@@ -81,7 +82,7 @@ beforeAll(async () => {
         return args.inputs as Record<string, unknown>;
       },
     },
-    "infra-testbed",
+    "testbed",
     "test",
     false,
   );
@@ -284,6 +285,8 @@ describe("awsTestbed", () => {
     const fetches = agent.match(/pnpm fetch [^\n]*/g) ?? [];
     expect(fetches).toHaveLength(2);
     for (const fetch of fetches) expect(fetch).toContain("--ignore-scripts");
+    // The metadata cache lives on /data, which Clean keeps: an offline install needs it (image 1.224117217.0).
+    expect(agent.match(/PNPM_CONFIG_CACHE_DIR=\/data\/pnpm-cache/g)).toHaveLength(2);
   });
 });
 

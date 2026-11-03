@@ -1,15 +1,15 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `parseTestbedBoxes` and `orderTestbedBoxes`: launch order, bad input, and which boxes a heavy
  *          and a light job may try.
  * Boundary: test only.
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484.
  */
-import { describe, expect, it } from "@stackra/testing";
+import { describe, expect, it } from "vitest";
 
-import { orderTestbedBoxes } from "#node/functions/order-testbed-boxes.function";
-import { parseTestbedBoxes } from "#node/functions/parse-testbed-boxes.function";
+import { orderTestbedBoxes } from "#cli/functions/order-testbed-boxes.function";
+import { parseTestbedBoxes } from "#cli/functions/parse-testbed-boxes.function";
 
 const rows = JSON.stringify([
   { id: "i-b", ip: "2.2.2.2", group: "light", launch: "2026-10-30T02:00:00Z" },

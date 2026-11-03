@@ -1,13 +1,13 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `orderTestbedBoxes(boxes, slot, skip)`, the boxes a job may try, in order, without the boxes already
  *          refused (exit 75). A heavy job runs only on `heavy`-group boxes (heavy never lands on spot); a light job
  *          tries `light` boxes first, then the light slot of `heavy` boxes. Each group is by launch time.
  * Boundary: pure.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import type { TestbedBox } from "#node/types/testbed-box.type";
+import type { TestbedBox } from "#cli/types/testbed-box.type";
 
 /**
  * The candidate boxes for a job.

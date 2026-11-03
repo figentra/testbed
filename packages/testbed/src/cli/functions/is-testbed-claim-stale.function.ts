@@ -1,10 +1,10 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `isTestbedClaimStale(pid, isAlive)`, whether a Mac-side claim no longer holds: it names no pid or its
  *          process is gone.
  * Boundary: pure.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 
 /**

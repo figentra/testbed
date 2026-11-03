@@ -1,0 +1,12 @@
+# Testbed file contract:
+# Purpose: the lockfile input of the aws-testbed test: stands in for core's pnpm-lock.yaml, whose bytes the image
+#          version hashes. Nothing parses it here.
+# Boundary: test fixture only.
+lockfileVersion: "9.0"
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .: {}

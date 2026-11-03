@@ -1,12 +1,12 @@
 /**
- * Stackra file contract:
- * Purpose: `TestbedSettings`, where and as whom `stackra testbed` reaches the boxes: AWS profile and region, SSH key and user.
+ * Testbed file contract:
+ * Purpose: `TestbedSettings`, where and as whom `testbed` reaches the boxes: AWS profile and region, SSH key and user.
  * Boundary: type only; `resolveTestbedSettings` builds it.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 
-/** The connection settings of one `stackra testbed` run. */
+/** The connection settings of one `testbed` run. */
 export type TestbedSettings = {
   /** The AWS CLI profile. */
   readonly profile: string;

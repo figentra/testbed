@@ -1,12 +1,12 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `parseTestbedBoxes(json)`, the running testbed instances from `aws ec2 describe-instances` output (an array
  *          of `{ id, ip, group, launch }`), numbered by launch time, each tagged with the region it was read in.
  * Boundary: pure; unparsable output or a row without an address gives no box, never a throw.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import type { TestbedBox } from "#node/types/testbed-box.type";
+import type { TestbedBox } from "#cli/types/testbed-box.type";
 
 /**
  * The boxes in `json`, oldest launch first (box 1 is the oldest).

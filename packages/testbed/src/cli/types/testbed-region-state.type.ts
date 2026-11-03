@@ -1,13 +1,13 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedRegionState`, what one look at an enabled region found: whether it answered, its boxes and its
  *          groups' counts.
  * Boundary: type only; `runTestbed` builds it, `pickTestbedSlot` and `summarizeTestbedRegion` read it.
  * Runtime: node
  * Governing contract: ADR 0484 (the testbed); the testbed regions contract (STA-2042).
  */
-import type { TestbedBoxState } from "#node/types/testbed-box-state.type";
-import type { TestbedGroupCounts } from "#node/types/testbed-group-counts.type";
+import type { TestbedBoxState } from "#cli/types/testbed-box-state.type";
+import type { TestbedGroupCounts } from "#cli/types/testbed-group-counts.type";
 
 /** One enabled region as seen now. */
 export type TestbedRegionState = {

@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `testbed-agent.sh` against stubbed docker, aws, infisical, pnpm and df on PATH: the 70%
  *          cleanup (finished job folders, stale seeds, dangling images), the 85% refusal (exit 75, `unhealthy: disk`)
  *          and the drain (an unhealthy mark only with no job running), a busy slot (exit 73), cleanup and scale-in
@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "@stackra/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";
 
@@ -293,6 +293,13 @@ describe("testbed-agent job run", () => {
     );
     expect(existsSync(dir("data/jobs/j4/.fetch"))).toBe(false);
     expect(logged()).toMatch(/-e CI=true /);
+    // The container reads the metadata cache the fetch filled; a lockfile install needs it for the release-age check.
+    expect(logged()).toMatch(/-v \S+\/data\/pnpm-cache:\/pnpm-cache /);
+    expect(logged()).toContain("-e PNPM_CONFIG_CACHE_DIR=/pnpm-cache");
+    expect(logged()).toContain("pnpm install --prefer-offline --frozen-lockfile");
+    // Writable, so a package the store lacks can be added during the install, with integrity checks forced on.
+    expect(logged()).toMatch(/-v \S+\/pnpm-store:\/pnpm-store /);
+    expect(logged()).toContain("-e PNPM_CONFIG_VERIFY_STORE_INTEGRITY=true");
     expect(logged()).not.toContain(TOKEN);
     expect(run.out + run.err).not.toContain(TOKEN);
     expect(readFileSync(`${log}.env`, "utf8")).toContain(`INFISICAL_TOKEN=${TOKEN}`);

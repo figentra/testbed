@@ -1,16 +1,17 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `resolveTestbedSettings(values, env, home)`, the AWS profile, the enabled regions, SSH key file and
  *          user: flag, then `STACKRA_TESTBED_*`, then the default. The regions are `--region r` (narrows to one), then
- *          `--regions a,b`, then `STACKRA_TESTBED_REGIONS`, then `STACKRA_TESTBED_REGION`, then the default list.
+ *          `--regions a,b`, then `STACKRA_TESTBED_REGIONS`, then `STACKRA_TESTBED_REGION`, then
+ *          `TESTBED_DEFAULTS.enabledRegions`. The `STACKRA_TESTBED_*` names are the frozen interface callers already set.
  * Boundary: pure; names a key file, never reads or prints one.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 import { join } from "node:path";
 
-import { TESTBED_CLI_DEFAULTS } from "#node/constants/testbed-cli-defaults.constant";
-import type { TestbedSettings } from "#node/types/testbed-settings.type";
+import type { TestbedSettings } from "#cli/types/testbed-settings.type";
+import { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";
 
 const text = (value: string | boolean | undefined): string | undefined =>
   typeof value === "string" && value !== "" ? value : undefined;
@@ -46,19 +47,19 @@ export function resolveTestbedSettings(
     list(values["regions"]) ??
     list(env["STACKRA_TESTBED_REGIONS"]) ??
     (single === undefined ? undefined : [single]) ??
-    TESTBED_CLI_DEFAULTS.regions;
+    TESTBED_DEFAULTS.enabledRegions;
   return {
     profile:
       text(values["profile"]) ??
       text(env["STACKRA_TESTBED_AWS_PROFILE"]) ??
-      TESTBED_CLI_DEFAULTS.profile,
+      TESTBED_DEFAULTS.awsProfile,
     region: regions[0] ?? "",
     regions,
     key:
       text(values["key"]) ??
       text(env["STACKRA_TESTBED_SSH_KEY"]) ??
-      join(home, TESTBED_CLI_DEFAULTS.key),
-    user: TESTBED_CLI_DEFAULTS.user,
+      join(home, TESTBED_DEFAULTS.keyFile.replace(/^~\//, "")),
+    user: TESTBED_DEFAULTS.sshUser,
     sshDirect: values["ssh-direct"] === true || env["STACKRA_TESTBED_SSH_DIRECT"] === "1",
   };
 }

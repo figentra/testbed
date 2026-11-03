@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TESTBED_PLAN_SCHEMA`, the zod schema of the testbed plan. It holds the rules ADR 0484 states: a heavy group is on-demand
  *          and a light group is spot (a heavy job never lands on spot), a group's minimum never exceeds its maximum,
  *          the data volume is mounted at `/data`, both disks are deleted with the instance, and the drain threshold
@@ -110,7 +110,7 @@ export const TESTBED_PLAN_SCHEMA = z
         /** The Infisical machine identity name; its id is a Pulumi config input, an id and not a secret. */
         identityName: z.string().min(1),
         identityId: z.string().min(1).optional(),
-        /** Project name (as `stackra testbed run` names it) to the paths a job of it may read. */
+        /** Project name (as `testbed run` names it) to the paths a job of it may read. */
         projects: z.record(z.string(), z.array(GRANT)),
       })
       .strict(),

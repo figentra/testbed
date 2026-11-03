@@ -1,9 +1,9 @@
 /**
- * Stackra file contract:
- * Purpose: `TestbedBox`, one running testbed instance as `stackra testbed` sees it.
+ * Testbed file contract:
+ * Purpose: `TestbedBox`, one running testbed instance as `testbed` sees it.
  * Boundary: type only; `parseTestbedBoxes` builds it.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 
 /** One running testbed instance. */

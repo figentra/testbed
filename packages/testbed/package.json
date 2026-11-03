@@ -1,8 +1,8 @@
 {
-  "name": "@stackra/infra-testbed",
-  "version": "0.8.0",
+  "name": "@figentra/testbed",
+  "version": "0.1.0",
   "private": false,
-  "description": "Pulumi program for the testbed (ADR 0484): disposable, image-built EC2 test boxes in two Auto Scaling groups, an EC2 Image Builder pipeline that bakes the job image and the box agent into an AMI, and the grants that let a box read its job secrets from Infisical; the plan is pure data, the program only declares",
+  "description": "The testbed: disposable, image-built EC2 test boxes in two Auto Scaling groups, an EC2 Image Builder pipeline that bakes the job image and the box agent into an AMI, the grants that let a box read its job secrets from Infisical, and the `testbed` CLI that runs heavy checks on them; the plan is pure data, the Pulumi program only declares",
   "keywords": [
     "ami",
     "auto-scaling",
@@ -10,26 +10,28 @@
     "image-builder",
     "infrastructure",
     "pulumi",
-    "stackra",
     "test-boxes",
     "testbed"
   ],
-  "homepage": "https://github.com/figentra/stackra/tree/main/packages/infrastructure/infra-testbed#readme",
+  "homepage": "https://github.com/figentra/testbed/tree/main/packages/testbed#readme",
   "bugs": {
-    "url": "https://github.com/figentra/stackra/issues"
+    "url": "https://github.com/figentra/testbed/issues"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "Figentra (https://figentra.com)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/figentra/stackra.git",
-    "directory": "packages/infrastructure/infra-testbed"
+    "url": "git+https://github.com/figentra/testbed.git",
+    "directory": "packages/testbed"
+  },
+  "bin": {
+    "testbed": "./dist/cli/main.mjs"
   },
   "files": [
     "dist",
     "src",
+    "!src/**/__tests__",
     "images",
-    "stackra.manifest.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -47,28 +49,27 @@
       "./src/node/*.ts",
       "./src/node/*/index.ts"
     ],
-    "#stackra/*": [
-      "./.stackra/gen/*",
-      "./.stackra/gen/*.ts",
-      "./.stackra/gen/*.tsx",
-      "./.stackra/gen/*/index.ts"
+    "#cli/*": [
+      "./src/cli/*",
+      "./src/cli/*.ts",
+      "./src/cli/*/index.ts"
     ]
   },
   "exports": {
     ".": {
-      "@stackra/source": "./src/core/index.ts",
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
     "./node": {
-      "@stackra/source": "./src/node/index.ts",
       "types": "./dist/node.d.mts",
       "default": "./dist/node.mjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": true,
+    "registry": "https://npm.stackra.figentra.com/"
   },
   "scripts": {
     "build": "tsdown",
@@ -82,15 +83,13 @@
   },
   "dependencies": {
     "@pulumi/aws": "catalog:infra",
-    "@stackra/contracts": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@pulumi/pulumi": "catalog:infra",
-    "@stackra/testing": "workspace:*",
-    "@stackra/tsdown-config": "workspace:*",
-    "@stackra/typescript-config": "workspace:*",
-    "@stackra/vitest-config": "workspace:*",
+    "@stackra/tsdown-config": "catalog:stackra",
+    "@stackra/typescript-config": "catalog:stackra",
+    "@stackra/vitest-config": "catalog:stackra",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:quality",
     "oxfmt": "catalog:quality",
@@ -104,15 +103,5 @@
   },
   "engines": {
     "node": ">=24.0.0"
-  },
-  "stackra": {
-    "kind": "package",
-    "tier": "lib",
-    "category": "infrastructure",
-    "runtimes": [
-      "isomorphic",
-      "node"
-    ],
-    "summary": "Reach for it when changing the shape, size, disks, guard thresholds, image contents or secret grants of the disposable test boxes (the testbed) that run agents' heavy checks."
   }
 }

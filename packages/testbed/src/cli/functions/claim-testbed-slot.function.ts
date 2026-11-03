@@ -1,16 +1,16 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `claimTestbedSlot(root, name, pid, isAlive)`, the Mac-side claim `<root>/<instance>-<slot>`: a directory
  *          made atomically that holds the claimer's pid, so parallel callers never pick the same free slot while the
  *          first still syncs. A claim whose pid is dead is stale and taken over.
  * Boundary: touches only the claim folder.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { isTestbedClaimStale } from "#node/functions/is-testbed-claim-stale.function";
+import { isTestbedClaimStale } from "#cli/functions/is-testbed-claim-stale.function";
 
 /**
  * Takes the claim `name`; false when a live process holds it.

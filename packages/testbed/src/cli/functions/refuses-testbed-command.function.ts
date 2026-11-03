@@ -1,12 +1,12 @@
 /**
- * Stackra file contract:
- * Purpose: `refusesTestbedCommand(command)`, whether a command calls the testbed itself (`ci-box` or
- *          `stackra testbed`), which would wait forever on the box while holding its lock.
- * Boundary: pure.
+ * Testbed file contract:
+ * Purpose: `refusesTestbedCommand(command)`, whether a command calls the testbed itself (`testbed`, `ci-box` or
+ *          `stackra testbed` with a verb), which would wait forever on the box while holding its lock.
+ * Boundary: pure; matches the command word (`TESTBED_NESTED_CALL`), so a package filter naming `testbed` passes.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import { TESTBED_NESTED_PATTERNS } from "#node/constants/testbed-nested-patterns.constant";
+import { TESTBED_NESTED_CALL } from "#cli/constants/testbed-nested-call.constant";
 
 /**
  * Whether `command` must be refused as a nested call.
@@ -14,7 +14,8 @@ import { TESTBED_NESTED_PATTERNS } from "#node/constants/testbed-nested-patterns
  * @param command - the command line to run on the box.
  * @example
  * refusesTestbedCommand("ci-box status"); // true
+ * refusesTestbedCommand("pnpm --filter @figentra/testbed test"); // false
  */
 export function refusesTestbedCommand(command: string): boolean {
-  return TESTBED_NESTED_PATTERNS.some((pattern) => command.includes(pattern));
+  return TESTBED_NESTED_CALL.test(command);
 }

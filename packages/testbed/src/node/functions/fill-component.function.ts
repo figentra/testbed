@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `fillComponent(document, values)`, which replaces every `@@NAME@@` placeholder of a component document with its value; a name with no value is an error, so no component ships unfilled.
  * Boundary: pure string work.
  * Runtime: node

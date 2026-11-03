@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedPlan`, the plain-data plan `testbedPlan` returns and `awsTestbed` declares.
  * Boundary: a type only, inferred from the zod schema so the two cannot drift.
  * Runtime: isomorphic

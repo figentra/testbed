@@ -1,13 +1,13 @@
 /**
- * Stackra file contract:
- * Purpose: `summarizeTestbedRegion(state)`, one enabled region as the `stackra testbed status --json` entry: whether it
+ * Testbed file contract:
+ * Purpose: `summarizeTestbedRegion(state)`, one enabled region as the `testbed status --json` entry: whether it
  *          answered, the free, total and startable heavy and light slots, and its boxes. Startable counts the slots of
  *          the boxes a group may still start: a heavy box brings a heavy and a light slot, a light box a light slot.
  * Boundary: pure.
  * Runtime: node
  * Governing contract: ADR 0484 (the testbed); the testbed regions contract (STA-2042 FR-007, FR-012).
  */
-import type { TestbedRegionState } from "#node/types/testbed-region-state.type";
+import type { TestbedRegionState } from "#cli/types/testbed-region-state.type";
 
 /** Free, total and startable slots of one kind. */
 type SlotCounts = { readonly free: number; readonly total: number; readonly startable: number };

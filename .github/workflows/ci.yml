@@ -1,0 +1,67 @@
+# Testbed file contract:
+# Purpose: the Quality Gate, the one required check on every pull request and push to main: workflow lint (actionlint,
+#          zizmor), install, format check, lint, typecheck and build. Tests run on the box, not on GitHub (STA-2064, as
+#          in figentra/stackra). Branch protection requires the `Quality Gate` job by name; never rename it.
+# Owner: release-operations
+# Secrets: none. The @stackra presets come from the registry's open scope, which needs no token; zizmor reads the
+#          action SHAs with the read-only job token.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      ACTIONLINT_TOOL: aqua:rhysd/actionlint@1.7.12
+      ZIZMOR_TOOL: aqua:zizmorcore/zizmor@1.31.1
+    steps:
+      # ADR 0019 D1: every action is pinned to a full commit SHA, the version in the trailing comment.
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          submodules: false
+
+      # The toolchain comes from mise.toml, so CI runs the versions a contributor runs; `format:check` needs shfmt.
+      - name: Toolchain (mise)
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          install_args: node pnpm shfmt
+
+      # Every workflow parses and type-checks (actionlint, with shellcheck on each `run:`) and passes zizmor's
+      # security audits, including the hash pin of every `uses:` (.github/zizmor.yml).
+      - name: Workflow lint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mise exec "$ACTIONLINT_TOOL" -- actionlint
+          mise exec "$ZIZMOR_TOOL" -- zizmor --config .github/zizmor.yml .github/workflows
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build

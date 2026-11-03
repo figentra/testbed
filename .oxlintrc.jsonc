@@ -1,0 +1,11 @@
+// Testbed file contract:
+// Purpose: root oxlint settings. Correctness and suspicious findings are errors, so a warning never passes unseen.
+//          The shared @stackra/oxlint-config is not used: its house-rule plugins need Stackra workspace packages.
+// Owner: release-operations · Secrets: forbidden
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "categories": { "correctness": "error", "suspicious": "error" },
+  "env": { "es2024": true },
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/coverage/**", "**/*.d.ts"],
+}

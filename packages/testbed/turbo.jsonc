@@ -1,8 +1,12 @@
-// Turborepo package configuration: extends the root turbo.jsonc and declares this member's tags
-// (tier, category, runtimes; pnpm validate checks them). Member-only task overrides go here.
+// Turborepo package configuration: extends the root turbo.jsonc and declares this member's tags.
+// Member-only task overrides go here.
 // Owner: release-operations · Secrets: forbidden
 {
   "$schema": "https://turborepo.dev/schema.json",
   "extends": ["//"],
   "tags": ["tier:lib", "category:infrastructure", "runtime:isomorphic", "runtime:node"],
+  "tasks": {
+    // The pin test reads core's mise.toml and catalogue from this checkout, and is skipped without it.
+    "test": { "env": ["CORE_CHECKOUT"] },
+  },
 }

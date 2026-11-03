@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `INSTANCE_VCPUS`, the vCPU count of every instance type the testbed plan may name, so the plan can be held to
  *          the region's vCPU quotas (ADR 0516); a type missing here is refused by the plan schema.
  * Boundary: data only; pure and Pulumi-free. Add a type here before a plan names it.

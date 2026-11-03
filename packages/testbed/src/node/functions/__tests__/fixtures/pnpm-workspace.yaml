@@ -1,0 +1,4 @@
+# Testbed file contract:
+# Purpose: the pnpm-workspace.yaml beside the fixture lockfile, uploaded with it as an image input.
+# Boundary: test fixture only; it is not a workspace of this repository.
+packages: []

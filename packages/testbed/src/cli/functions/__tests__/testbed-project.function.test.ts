@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `testbedProject`: a plain checkout, a subfolder of it, a git worktree, and no git at all.
  * Boundary: test only; writes a throwaway folder in the OS temp directory.
  * Runtime: node (vitest)
@@ -9,14 +9,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "@stackra/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { testbedProject } from "#node/functions/testbed-project.function";
+import { testbedProject } from "#cli/functions/testbed-project.function";
 
 let root: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "stackra-project-"));
+  root = mkdtempSync(join(tmpdir(), "testbed-project-"));
 });
 
 afterEach(() => {

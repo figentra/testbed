@@ -1,12 +1,11 @@
 /**
- * Stackra file contract:
- * Purpose: Stand-in barrel: the `.` entry of @stackra/infra-testbed until `stackra gen` writes the entry barrels
- *          (STA-339): `testbedPlan`, the testbed as zod-validated plain data, the defaults `stackra testbed` and the
- *          box agent share (`TESTBED_DEFAULTS`), the one set of toolchain pins (`TOOLCHAIN_PINS`), the boot script
- *          (`testbedUserData`), and the plan schema and types.
+ * Testbed file contract:
+ * Purpose: the `.` entry of @figentra/testbed: `testbedPlan`, the testbed as zod-validated plain data, the defaults
+ *          the `testbed` CLI and the box agent share (`TESTBED_DEFAULTS`), the one set of toolchain pins
+ *          (`TOOLCHAIN_PINS`), the boot script (`testbedUserData`), and the plan schema and types.
  * Boundary: names each re-export and declares nothing. Pure and Pulumi-free; the Pulumi program is `./node`'s.
  * Runtime: isomorphic
- * Governing contract: ADR 0294 (decision 15); the STA-347 stand-in barrel decision; ADR 0484.
+ * Governing contract: ADR 0484.
  */
 export { INSTANCE_VCPUS } from "#core/constants/instance-vcpus.constant";
 export { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";

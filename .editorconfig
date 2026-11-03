@@ -1,0 +1,23 @@
+# Testbed file contract:
+# Purpose: the one formatting contract every editor honours before any formatter runs; shfmt reads it too.
+#          Equal to figentra/stackra's, which the moved shell scripts were formatted under.
+# Owner: release-operations
+# Secrets: forbidden
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# shfmt reads this section natively (`-ci -bn`); the indent comes from [*]
+[*.{sh,bash}]
+switch_case_indent = true
+binary_next_line = true

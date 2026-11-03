@@ -1,0 +1,49 @@
+# Testbed file contract:
+# Purpose: git hooks — pre-commit format, lint and a secret scan on staged files, commit-msg conventional commits.
+#          Advisory; CI is the gate. Install on a Mac with `mise exec lefthook -- lefthook install` (no pnpm install);
+#          `pnpm install` (prepare) installs them on a box. No pre-push: typecheck and tests run on a box
+#          (`testbed run`), never on the Mac.
+#          Every job runs only a mise-pinned tool, named in `mise exec` so mise fetches only that tool, and never
+#          pnpm: pnpm 12's exec installs the workspace (2026-11-03). Where mise is missing a job prints a skip line.
+# Owner: release-operations
+# Secrets: forbidden
+pre-commit:
+  parallel: true
+  jobs:
+    - name: oxfmt
+      glob: "*.{js,mjs,ts,json,jsonc,yaml,yml,md}"
+      # oxfmt exits 2 when every staged file is ignored: that is not a finding.
+      run: >-
+        sh -c 'command -v mise >/dev/null 2>&1 || { echo "oxfmt skipped: mise not installed; CI checks"; exit 0; };
+        mise exec npm:oxfmt -- oxfmt --check "$@";
+        s=$?; [ $s -eq 2 ] && exit 0; exit $s' -- {staged_files}
+    - name: shfmt
+      glob: "*.sh"
+      # The hashed image inputs are frozen bytes (AGENTS.md), never reformatted.
+      exclude:
+        - "packages/testbed/images/**"
+        - "packages/testbed/src/agent/testbed-agent.sh"
+      run: >-
+        sh -c 'command -v mise >/dev/null 2>&1 || { echo "shfmt skipped: mise not installed; CI checks"; exit 0; };
+        exec mise exec shfmt -- shfmt -d "$@"' -- {staged_files}
+    - name: oxlint
+      glob: "*.{js,mjs,ts}"
+      run: >-
+        sh -c 'command -v mise >/dev/null 2>&1 || { echo "oxlint skipped: mise not installed; CI lints"; exit 0; };
+        exec mise exec npm:oxlint -- oxlint "$@"' -- {staged_files}
+    - name: gitleaks
+      run: >-
+        sh -c 'command -v mise >/dev/null 2>&1 || { echo "gitleaks skipped: mise not installed"; exit 0; };
+        exec mise exec gitleaks -- gitleaks protect --staged --no-banner --redact'
+
+commit-msg:
+  jobs:
+    # commitlint reads the preset from node_modules, so it runs only where an install already exists (a box); on a
+    # Mac it is skipped, as in figentra/stackra. Called directly, never through pnpm.
+    - name: commitlint
+      run: |
+        if [ -x node_modules/.bin/commitlint ]; then
+          node_modules/.bin/commitlint --edit {1}
+        else
+          echo "commitlint skipped: no workspace install here"
+        fi

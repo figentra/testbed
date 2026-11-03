@@ -1,10 +1,10 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `decideTestbedFallback(state)`, what a run does when no slot is free: `dispatch` the GitHub fallback
  *          workflow (no healthy box and a preset given), otherwise `wait`. The Mac is never the fallback.
  * Boundary: pure.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 
 /**

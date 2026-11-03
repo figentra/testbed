@@ -1,26 +1,40 @@
----
-title: "Test infrastructure (the testbed)"
-description: "The shared test boxes every builder session uses: how jobs run, the disk guard, replacing a box, rebuilding the image, secrets, the fallback, cost, and the migration from the old ci-box fleet."
-icon: "server"
----
+# Test infrastructure (the testbed)
 
-<Note>
-  Status: written, not applied (STA-1626). The design is [ADR
-  0484](/adr/0484-the-testbed-disposable-image-built-test-boxes-a-container-per-job-and-secrets-from-infisical).
-  The code is `@stackra/infra-testbed` and `stackra testbed`. Nothing is applied until the owner
-  says so. Until the migration below finishes, `ci-box` and the eight old boxes stay in service.
-</Note>
+<!--
+Testbed file contract:
+Purpose: the operator runbook of the testbed: how jobs run, the disk guard, replacing a box, rebuilding the image,
+         secrets, the fallback, cost, and the migration from the old ci-box fleet.
+Boundary: documentation only; the code, ADR 0484 (as amended by ADR 0522) and the box agent contract
+          (`.agents/specs/sta-1626-testbed/agent-contract.md`) win on any difference.
+Origin: `apps/docs/src/docs/runbooks/test-infrastructure.mdx` in figentra/stackra, moved here at beaafa27 (STA-2073).
+-->
 
-<Warning>
-  AWS quotas are fixed inputs ([ADR 0516](/adr/0516-aws-quotas-are-fixed-inputs)): each region
-  allows 8 on-demand and 8 spot vCPUs, one `2xlarge` of each, and AWS Support refuses increases. The
-  groups below fit that: each is 0 to 1 box, and the plan refuses more. Never request or suggest a
-  quota increase without the owner's explicit confirmation; reading a quota is fine.
-</Warning>
+The shared test boxes every builder session uses: how jobs run, the disk guard, replacing a box, rebuilding the image,
+secrets, the fallback, cost, and the migration from the old ci-box fleet.
+
+> [!NOTE]
+> The design is [ADR 0484][adr-0484]; ADR 0522 (reserved in figentra/stackra, STA-2073) moves the code to this
+> repository and the CLI to `testbed`. The code is `@figentra/testbed` (`packages/testbed`) and its `testbed` command.
+> `stackra testbed` in `@stackra/cli` keeps working for one release, then goes. Nothing is applied until the owner
+> says so. Until the migration below finishes, `ci-box` and the eight old boxes stay in service.
+
+> [!WARNING]
+> AWS quotas are fixed inputs ([ADR 0516][adr-0516]): each region allows 8 on-demand and 8 spot vCPUs, one `2xlarge`
+> of each, and AWS Support refuses increases. The groups below fit that: each is 0 to 1 box, and the plan refuses
+> more. Never request or suggest a quota increase without the owner's explicit confirmation; reading a quota is fine.
 
 Builder sessions never run heavy checks on the Mac. Only oxfmt and oxlint run there. Install, build, gen, typecheck,
 tests, e2e and integration tests all run on the testbed: identical EC2 boxes, built from one image, in one region
 (eu-west-1).
+
+## Live names
+
+The AWS resources and their names stay as they were created; renaming one replaces it or orphans its state. They are:
+the state bucket `stackra-pulumi-state-591473336656`, the Pulumi project `stackra-testbed` and its stacks
+`testbed-<region>`, every `stackra-testbed-*` resource (the groups `stackra-testbed-heavy` and `stackra-testbed-light`,
+the image pipeline `stackra-testbed`, the roles `stackra-testbed-instance` and `stackra-testbed-deploy`), the tag
+`stackra:testbed`, the AMI parameter `/imagebuilder/stackra-testbed/ami`, the key pair `academorix-ci` and the AWS
+profile `academorix`.
 
 ## The shape
 
@@ -38,7 +52,7 @@ tests, e2e and integration tests all run on the testbed: identical EC2 boxes, bu
 ## Running work
 
 ```bash
-stackra testbed run "<session> <what>" <project-dir> "<command>"
+testbed run "<session> <what>" <project-dir> "<command>"
 ```
 
 The command looks at every enabled region and takes a free slot of the right kind, in region order. When there is none,
@@ -46,19 +60,20 @@ it starts a box in the first region with room, and otherwise waits. It syncs the
 because the box clones its last copy of the project first. Then it runs the command in a fresh container and returns
 its exit code.
 
-The enabled regions are `TESTBED_CLI_DEFAULTS.regions` in `@stackra/cli`, a list that grows by one line as each region
-joins. `--regions a,b` or `STACKRA_TESTBED_REGIONS` overrides it for one machine, and `--region r` narrows it to one
-region. The other verbs:
+The enabled regions are `TESTBED_DEFAULTS.enabledRegions` in
+`packages/testbed/src/core/constants/testbed-defaults.constant.ts`, a list that grows by one line as each region joins.
+`--regions a,b` or `STACKRA_TESTBED_REGIONS` overrides it for one machine, and `--region r` narrows it to one region.
+The other verbs:
 
-| Verb                                 | Does                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `stackra testbed status`             | each enabled region and its boxes: heavy and light slot, disk use, health, image age, load |
-| `stackra testbed unlock --box N`     | stops a stuck job on one box (its container and the containers it started)                 |
-| `stackra testbed ip\|ssh\|sync`      | one box, by number from `status` or by instance id                                         |
-| `stackra testbed scale [--region r]` | shows each group's desired count and raises it by one                                      |
-| `stackra testbed image`              | the current AMI and its age                                                                |
+| Verb                         | Does                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| `testbed status`             | each enabled region and its boxes: heavy and light slot, disk use, health, image age, load |
+| `testbed unlock --box N`     | stops a stuck job on one box (its container and the containers it started)                 |
+| `testbed ip\|ssh\|sync`      | one box, by number from `status` or by instance id                                         |
+| `testbed scale [--region r]` | shows each group's desired count and raises it by one                                      |
+| `testbed image`              | the current AMI and its age                                                                |
 
-For callers such as `fflow gate`:
+For callers such as `fflow gate` (this interface is frozen by ADR 0522):
 
 - **`run … --json`** streams the job's output to stderr and prints one line on stdout:
   `{"region","box","slot","waitSeconds","runSeconds","exitCode"}`.
@@ -67,9 +82,11 @@ For callers such as `fflow gate`:
 - **`status --json`** gives each region's free, total and startable heavy and light slots, so the caller sizes its
   parallel jobs.
 
+Also:
+
 - **"every box busy, waiting"** means every slot of that kind is taken. After two minutes the command adds a box (up
   to the group's maximum) and keeps waiting. Do not start a second copy of the job.
-- A command that calls `ci-box` or `stackra testbed` is refused. Run it from the Mac instead.
+- A command that calls `ci-box`, `testbed` or `stackra testbed` is refused. Run it from the Mac instead.
 - A job runs for at most 3 hours.
 
 ### How the Mac reaches a box
@@ -77,11 +94,11 @@ For callers such as `fflow gate`:
 By SSH through **SSM Session Manager**: `ssh`, `rsync` and every verb connect to `ubuntu@<instance-id>` with an
 `AWS-StartSSHSession` `ProxyCommand`. The security group has no inbound rule, so a changing public IP (Cloudflare WARP)
 does not matter. Needs on the Mac: the `aws` CLI with the `academorix` profile, the SSH key, and the Session Manager
-plugin, pinned in `mise.toml` (`mise install`). The box side is already there: the instance role has
-`AmazonSSMManagedInstanceCore`, the Ubuntu image runs the SSM agent, and egress is open.
+plugin, pinned in the calling repository's `mise.toml` (figentra/stackra's does; `mise install`). The box side is already there:
+the instance role has `AmazonSSMManagedInstanceCore`, the Ubuntu image runs the SSM agent, and egress is open.
 
-`stackra testbed --ssh-direct` (or `STACKRA_TESTBED_SSH_DIRECT=1`) is the fallback: it connects to the public IP and
-swaps this machine's address into the port-22 allowlist, which exists only when `TESTBED_SSH_CIDRS` was set at apply.
+`testbed --ssh-direct` (or `STACKRA_TESTBED_SSH_DIRECT=1`) is the fallback: it connects to the public IP and swaps this
+machine's address into the port-22 allowlist, which exists only when `TESTBED_SSH_CIDRS` was set at apply.
 
 The `academorix` profile runs as the account root today, so it needs no policy. A non-root caller needs this much:
 
@@ -135,25 +152,48 @@ in `status` and fix the job.
 
 Replace, don't repair. A box that is unhealthy or acting oddly:
 
-1. Run `stackra testbed status` and note the box's instance id.
+1. Run `testbed status` and note the box's instance id.
 2. Wait until its slots are free. A running job holds scale-in protection.
 3. The owner, or the tester with the owner's yes, marks it unhealthy:
 
-```bash
-aws autoscaling set-instance-health --instance-id <id> --health-status Unhealthy --profile academorix --region eu-west-1
-```
+   ```bash
+   aws autoscaling set-instance-health --instance-id <id> --health-status Unhealthy --profile academorix --region eu-west-1
+   ```
 
 The group starts a new box from the current image within about five minutes. Never SSH in to patch packages, edit
 configs or install tools: the next box would not have the change. Change the image instead.
+
+## Who may dispatch what
+
+- **The owner only** dispatches `apply-testbed.yml` with `up` or `build-image`, a stack rename, an instance refresh and
+  the canary. The `testbed` environment (main only, the owner as required reviewer) approves every apply run.
+- **Agents** run `preview` only, and never `pulumi up`, `pulumi destroy`, an image build or `docker build` on a
+  workstation. They may start an apply run for the owner to approve, never approve one.
+- `testbed-image.yml` (the image check on a pull request, a dispatch and the daily run) needs no approval: it builds
+  nothing in AWS.
 
 ## Rebuilding the image
 
 There is no schedule, and only the home region (eu-west-1) builds. Its distribution copies each new AMI to all four
 regions and writes each region's `/imagebuilder/stackra-testbed/ami`, so no other region ever builds. The build
-instance is a second on-demand `c7i.2xlarge`, and the home region's on-demand quota fits one
-([ADR 0516](/adr/0516-aws-quotas-are-fixed-inputs)). So after a recipe change (the Dockerfile, the host components or
-the toolchain pins give it a new version), the owner starts a build by hand, only while eu-west-1's `heavy` group is
-at 0. The usual way is `apply-testbed.yml` with `action=build-image` and `region=eu-west-1`; by hand:
+instance is a second on-demand `c7i.2xlarge`, and the home region's on-demand quota fits one ([ADR 0516][adr-0516]).
+So after a recipe change, the owner starts a build by hand, only while eu-west-1's `heavy` group is at 0. The recipe
+gets a new version when any hashed input changes:
+
+- the Dockerfile (`packages/testbed/images/job/Dockerfile`);
+- the host components and files (`packages/testbed/images/host/`);
+- the box agent (`packages/testbed/src/agent/testbed-agent.sh`);
+- the toolchain pins (`packages/testbed/src/core/constants/toolchain-pins.constant.ts`);
+- core's four install files: `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.pnpmfile.mjs` and `.npmrc` of
+  figentra/stackra ("core" below).
+
+Core's install files are the image's only install source, and they warm the box's pnpm store: the warm store is core's
+alone. The workflows take them from a sparse checkout of figentra/stackra (those four files and `mise.toml`) at the
+input `core_ref`, default `main`, and pass the lockfile path to Pulumi. Because a core lockfile change moves the hash,
+core keeps a small advisory warm-store check on its own pull requests, and `testbed-image.yml` here runs daily against
+core `main`, with the test that the toolchain pins match core's `mise.toml` and `pnpm-workspace.yaml`.
+
+The usual way is `apply-testbed.yml` with `action=build-image` and `region=eu-west-1`; by hand:
 
 ```bash
 aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names stackra-testbed-heavy --query 'AutoScalingGroups[0].DesiredCapacity' --profile academorix --region eu-west-1
@@ -177,16 +217,17 @@ Repeat with `stackra-testbed-light`, and in each region that runs boxes (`--regi
   one the Quality Gate uses over GitHub OIDC). AWS Auth sits beside its OIDC auth; no new identity is created.
 - At job start the agent gets a token that lives for the job's timeout. The container runs the command under
   `infisical run`. No value touches a disk, a log or a command line.
-- Which project paths a job may read is `secretGrants` in `@stackra/infra-testbed`, reviewed like code. The identity's
+- Which project paths a job may read is `secretGrants` in `@figentra/testbed`, reviewed like code. The identity's
   permissions in Infisical are the real limit.
 - `ci-box put-env` and `~/.ci-env` are retired. A missing token is fixed in Infisical, by the owner. To rotate the
-  identity's auth, see [Token rotation](/runbooks/token-rotation).
+  identity's auth, see [Token rotation][token-rotation] in figentra/stackra.
 
 ## When no box is healthy
 
-`stackra testbed run --preset <verify|e2e|integration> --ref <ref>` dispatches `testbed-fallback.yml`. It runs that
-preset for a pushed ref on a GitHub-hosted runner. A plain command, or work in an unpushed worktree, waits for a box
-instead. Nothing falls back to the Mac.
+`testbed run --preset <verify|e2e|integration> --ref <ref>` dispatches `testbed-fallback.yml` in the caller's
+repository (figentra/stackra has it). It runs that preset for a pushed ref on a GitHub-hosted runner. In a repository
+without that workflow (this one, figentra/flow) the CLI dispatches nothing and prints a hint, and the run exits 75. A
+plain command, or work in an unpushed worktree, waits for a box instead. Nothing falls back to the Mac.
 
 ## Cost
 
@@ -196,45 +237,31 @@ Prices read on 2026-10-30 for eu-west-1:
 - spot: about $0.215 an hour;
 - gp3: $0.088 per GB-month (about $21 a month for one box's two disks).
 
-Both minimums are 0, so an idle testbed costs only its stopped state: nothing runs. A busy day runs at most one heavy and
-one light box per region, about $0.60 an hour a region; with all four regions busy around the clock that is at most
-about $1,760 a month with disks, and a normal day is a small part of that. Each region also stores its copy of the
-image, about $12 a month. Every box
-ends itself after 60 idle minutes, and `stackra testbed run` starts one when its group is at 0. The old fleet ran about
-$1,900 a month.
+Both minimums are 0, so an idle testbed costs only its stopped state: nothing runs. A busy day runs at most one heavy
+and one light box per region, about $0.60 an hour a region; with all four regions busy around the clock that is at
+most about $1,760 a month with disks, and a normal day is a small part of that. Each region also stores its copy of
+the image, about $12 a month. Every box ends itself after 60 idle minutes, and `testbed run` starts one when its group
+is at 0. The old fleet ran about $1,900 a month.
 
 ## Migration from the old fleet
 
 The tester keeps using the eight old boxes until the new pool has passed the same work. Every step is a separate owner
-yes ([plan](https://github.com/figentra/stackra/tree/main/.agents/specs/sta-1626-testbed/plan.md)).
+yes ([plan](../.agents/specs/sta-1626-testbed/plan.md)).
 
-<Steps>
-  <Step title="Infisical">
-    The owner adds AWS Auth to the shared gate identity, bound to the testbed instance role.
-  </Step>
-  <Step title="Stand up beside">
-    The `apply-testbed.yml` workflow in eu-west-1 (Step 2 below): the image pipeline, the first AMI,
-    both groups 0 to 1. The old eu-west-1 boxes 1 and 2 must be **stopped** first: they hold the
-    region's whole on-demand and spot quota while running, and stopped instances count against
-    neither. `ci-box` skips them since 2026-11-02, so they stop themselves after 60 idle minutes.
-  </Step>
-  <Step title="Canary">
-    The tester runs the same jobs on both fleets for a day (core verify, playground e2e, an
-    integration suite, one Academorix job) and compares the results.
-  </Step>
-  <Step title="Switch">
-    `ci-box` becomes the shim (`tools/scripts/ci-box-shim.sh`): new boxes first, old boxes only when
-    the new pool has no healthy box. The groups stay 0 to 1: the quota allows no more (ADR 0516).
-  </Step>
-  <Step title="Drain">
-    One old region a day (us-east-1, eu-west-2, eu-central-1, eu-west-1): remove it from the shim's
-    fallback, wait for free slots, stop the boxes.
-  </Step>
-  <Step title="Retire">
-    After a week stopped and unused, terminate the old boxes and their disks, delete the emptied
-    `academorix-ci` security groups, and delete the shim's fallback with every `~/.ci-env`.
-  </Step>
-</Steps>
+1. **Infisical.** The owner adds AWS Auth to the shared gate identity, bound to the testbed instance role.
+2. **Stand up beside.** The `apply-testbed.yml` workflow in eu-west-1 (Step 2 below): the image pipeline, the first
+   AMI, both groups 0 to 1. The old eu-west-1 boxes 1 and 2 must be **stopped** first: they hold the region's whole
+   on-demand and spot quota while running, and stopped instances count against neither. `ci-box` skips them since
+   2026-11-02, so they stop themselves after 60 idle minutes.
+3. **Canary.** The tester runs the same jobs on both fleets for a day (core verify, playground e2e, an integration
+   suite, one Academorix job) and compares the results.
+4. **Switch.** `ci-box` becomes the shim (`scripts/ci-box-shim.sh`, installed as `~/.local/bin/ci-box`): new boxes
+   first, old boxes only when the new pool has no healthy box. The groups stay 0 to 1: the quota allows no more
+   (ADR 0516).
+5. **Drain.** One old region a day (us-east-1, eu-west-2, eu-central-1, eu-west-1): remove it from the shim's
+   fallback, wait for free slots, stop the boxes.
+6. **Retire.** After a week stopped and unused, terminate the old boxes and their disks, delete the emptied
+   `academorix-ci` security groups, and delete the shim's fallback with every `~/.ci-env`.
 
 Rollback before the last step: the shim still names the old boxes, and `aws ec2 start-instances` brings them back.
 
@@ -243,11 +270,12 @@ Rollback before the last step: the shim still names the old boxes, and `aws ec2 
 The boxes use the shared machine identity `figentra-ci-gate`, the one the Quality Gate uses over GitHub OIDC (its id is
 the GitHub organization variable `INFISICAL_GATE_IDENTITY_ID`). It already has **Viewer** on the Infisical project
 `ci-build` (renamed from `figentra-ci-gate`, same id), which holds exactly what a job needs: `prod` `/ci`
-(`UNIWIND_AUTH_TOKEN`) and `prod` `/ci/turbo` (`TURBO_TOKEN`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY`).
-The Figentra Flow gate key is not here: it lives in the project `flow`, read only by the `figentra-flow-box`
-identity through figentra-flow's poster, and no job grant names it. The project is the boundary; the free plan has no
-custom roles. Nothing is created: one login method is added, so no identity slot is spent. The owner does this in the
-Infisical web app (EU, `eu.infisical.com`); no value is typed anywhere.
+(`UNIWIND_AUTH_TOKEN`) and `prod` `/ci/turbo` (`TURBO_TOKEN`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY`). The Figentra Flow
+gate key is not here: it lives in the project `flow`, read only by the `figentra-flow-box` identity through
+figentra-flow's poster, and no job grant names it. The project is the boundary; the free plan has no custom roles.
+Nothing is created: one login method is added, so no identity slot is spent. The owner does this in the Infisical web
+app (EU, `eu.infisical.com`); no value is typed anywhere. AWS Auth is bound to the instance role, not to a repository,
+so the move to this repository changes nothing here.
 
 1. Organization, **Access Control**, **Machine Identities**, then open `figentra-ci-gate`.
 2. In **Authentication**, leave **OIDC Auth** exactly as it is (CI depends on it) and choose **Add auth method**,
@@ -281,6 +309,11 @@ private, versioned bucket `stackra-pulumi-state-591473336656` (eu-west-1), which
 backend locks with objects in that bucket, so there is no lock table. The stack holds ids and CIDRs only, so its
 passphrase is empty by design.
 
+The workflow selects the region's stack and never creates one: a missing stack fails the run instead of starting an
+empty one. Only the explicit new-region path (2c) may create a stack. Apply runs from one repository at a time: core's
+"Apply testbed" is disabled before this repository's first preview, and both previews at one recorded core SHA must
+show the same diff.
+
 ### 2a. One-time bootstrap (owner, with the `academorix` AWS profile; done 2026-10-30)
 
 The workflow cannot create the role it signs in with, so the owner creates it once. GitHub's OIDC provider, if the
@@ -290,12 +323,18 @@ account has none yet:
 aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com --profile academorix
 ```
 
-The deploy role, trusted only by this repository's `testbed` environment. The organization's tokens use the immutable
-subject form (`repo:figentra@314302700/stackra@1425140001:…`, as `ci.yml` notes), so both forms are listed:
+The deploy role, trusted only by the `testbed` environment of the repository that applies. The organization's tokens
+use the immutable subject form (`repo:figentra@314302700/<repo>@<repo-id>:…`), so both forms are listed. It was
+created on 2026-10-30 for figentra/stackra:
 
 ```bash
 aws iam create-role --role-name stackra-testbed-deploy --profile academorix --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"arn:aws:iam::591473336656:oidc-provider/token.actions.githubusercontent.com"},"Action":"sts:AssumeRoleWithWebIdentity","Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com","token.actions.githubusercontent.com:sub":["repo:figentra/stackra:environment:testbed","repo:figentra@314302700/stackra@1425140001:environment:testbed"]}}}]}'
 ```
+
+For this repository the owner adds the figentra/testbed subjects to that trust policy
+(`repo:figentra/testbed:environment:testbed` and `repo:figentra@314302700/testbed@<repo-id>:environment:testbed`,
+`<repo-id>` being this repository's numeric id), with `aws iam update-assume-role-policy`, and removes the two
+figentra/stackra subjects once the first `up` from here has run. Until then core can still assume the role.
 
 Its rights: everything but IAM (`PowerUserAccess`), plus IAM only for the testbed's own roles and instance profiles,
 and never for itself (the deny keeps it from granting its own role more):
@@ -308,14 +347,15 @@ aws iam attach-role-policy --role-name stackra-testbed-deploy --policy-arn arn:a
 aws iam put-role-policy --role-name stackra-testbed-deploy --policy-name testbed-iam --profile academorix --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*Role","iam:*Roles","iam:*RolePolicy","iam:*RolePolicies","iam:*InstanceProfile","iam:*InstanceProfiles","iam:*RoleFromInstanceProfile","iam:*RoleToInstanceProfile","iam:TagRole","iam:UntagRole","iam:TagInstanceProfile","iam:PassRole"],"Resource":["arn:aws:iam::591473336656:role/stackra-testbed-*","arn:aws:iam::591473336656:instance-profile/stackra-testbed-*"]},{"Effect":"Allow","Action":"iam:CreateServiceLinkedRole","Resource":"*"},{"Sid":"NeverItsOwnRole","Effect":"Deny","Action":"iam:*","Resource":"arn:aws:iam::591473336656:role/stackra-testbed-deploy"}]}'
 ```
 
-Then in GitHub, figentra/stackra, Settings, Environments, New environment `testbed`: deployment branches **main**
+Then in GitHub, figentra/testbed, Settings, Environments, New environment `testbed`: deployment branches **main**
 only, required reviewer the owner, and two environment variables (neither is secret):
 
 - `TESTBED_DEPLOY_ROLE_ARN` = `arn:aws:iam::591473336656:role/stackra-testbed-deploy`
 - `TESTBED_SSH_CIDRS` (optional) = a port-22 allowlist as `x.x.x.x/32`, comma-separated, for `--ssh-direct` only.
   Leave it unset: the CLI reaches the boxes through SSM. A rule already applied stays until the owner revokes it.
 
-`INFISICAL_GATE_IDENTITY_ID` and `INFISICAL_GATE_PROJECT_ID` are already organization variables.
+`INFISICAL_GATE_IDENTITY_ID` and `INFISICAL_GATE_PROJECT_ID` are organization variables; the owner gives this
+repository access to them.
 
 ### 2b. The two passes
 
@@ -331,15 +371,16 @@ environment.
    `/imagebuilder/stackra-testbed/ami` holds the AMI id. The build instance is a `c7i.2xlarge` that needs the region's
    whole on-demand quota (8 vCPUs), so no heavy box, and no old on-demand box in eu-west-1, may be running.
 4. **action** `preview`, **groups** ticked, heavy `0`, light `0`: the two Auto Scaling groups appear.
-5. **action** `up`, same inputs. No box starts. The first `stackra testbed run` raises the heavy group from 0 to 1, and
-   `stackra testbed status` should list that box healthy within about five minutes.
+5. **action** `up`, same inputs. No box starts. The first `testbed run` raises the heavy group from 0 to 1, and
+   `testbed status` should list that box healthy within about five minutes.
 
-Both minimums stay at 0 ([0516](/adr/0516-aws-quotas-are-fixed-inputs)): with 8 on-demand and 8 spot vCPUs the pool is at
-most one heavy and one light box, each started on demand. The plan refuses a heavy minimum above 0, because the image
-build must always fit beside it.
+Both minimums stay at 0 ([ADR 0516][adr-0516]): with 8 on-demand and 8 spot vCPUs the pool is at most one heavy and
+one light box, each started on demand. The plan refuses a heavy minimum above 0, because the image build must always
+fit beside it.
 
-Every run takes a `region` (default eu-west-1) and applies that region's stack, `testbed-<region>`. The first `up` with
-eu-west-1 renames the old single-region stack `testbed` to `testbed-eu-west-1`. `build-image` runs in eu-west-1 only.
+Every run takes a `region` (default eu-west-1) and applies that region's stack, `testbed-<region>`. The old
+single-region stack `testbed` was renamed `testbed-eu-west-1` by its first `up` from core; the owner confirms that
+rename before the first run here. `build-image` runs in eu-west-1 only.
 
 ### 2c. Adding a region
 
@@ -347,8 +388,13 @@ eu-west-1 renames the old single-region stack `testbed` to `testbed-eu-west-1`. 
 2. **Check the image is there:** the region must already hold the image, so that
    `aws ssm get-parameter --name /imagebuilder/stackra-testbed/ami --region <region> --profile academorix` returns an
    AMI. A build after the four-region distribution put it there.
-3. **Apply the region:** **action** `up`, **region** `<region>`, **groups** ticked, heavy `0`, light `0`. That declares
-   the security group, the launch template and the two groups. No box starts.
-4. **Enable it in the CLI:** a one-line pull request adds the region to `TESTBED_CLI_DEFAULTS.regions`, and the CLI is
-   released. The region is used once sessions run that version. Until then, one job can try it with
+3. **Apply the region:** **action** `up`, **region** `<region>`, **groups** ticked, heavy `0`, light `0`, through the
+   new-region path that may create the region's stack. That declares the security group, the launch template and the
+   two groups. No box starts.
+4. **Enable it in the CLI:** a one-line pull request here adds the region to `TESTBED_DEFAULTS.enabledRegions`, and `@figentra/testbed`
+   is released. The region is used once sessions run that version. Until then, one job can try it with
    `--regions <region>`.
+
+[adr-0484]: https://github.com/figentra/stackra/blob/main/apps/docs/src/docs/adr/0484-the-testbed-disposable-image-built-test-boxes-a-container-per-job-and-secrets-from-infisical.mdx
+[adr-0516]: https://github.com/figentra/stackra/blob/main/apps/docs/src/docs/adr/0516-aws-quotas-are-fixed-inputs.mdx
+[token-rotation]: https://github.com/figentra/stackra/blob/main/apps/docs/src/docs/runbooks/token-rotation.mdx
