@@ -1,0 +1,12 @@
+# Stackra file contract:
+# Purpose: runs `testbed-agent idle`: the idle pass (terminate above the group's minimum after 60 idle minutes).
+# Boundary: one-shot as ubuntu (in the docker group); started by testbed-idle.timer.
+# Owner: release-operations · Secrets: forbidden
+[Unit]
+Description=Testbed agent idle pass
+After=testbed-data.service docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/usr/local/bin/testbed-agent idle

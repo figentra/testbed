@@ -1,0 +1,190 @@
+# Stackra file contract:
+# Purpose: apply the testbed (ADR 0484, STA-1626) with Pulumi from CI only, by hand: test and build
+#          @stackra/infra-testbed, then `pulumi preview`, `pulumi up`, or a run of the image pipeline, against one
+#          region's stack `testbed-<region>` of packages/infrastructure/infra-testbed/pulumi in the academorix AWS
+#          account (591473336656). eu-west-1 is the home: its stack holds the global roles and the image pipeline,
+#          whose distribution copies each AMI to all four regions; the others hold their pool only (STA-2042). The
+#          old single-region stack `testbed` is renamed `testbed-eu-west-1` on its first run here.
+# Boundary: workflow_dispatch only, main only, in the `testbed` environment (restricted to main, required reviewer:
+#           the owner approves every run). The first apply is two passes (runbook "Step 2 in detail"): `groups`
+#           unticked until the first image exists. Creates the private, versioned state bucket on its first run.
+# Runtime: GitHub Actions
+# Governing contract: ADR 0484, ADR 0171 (decisions 4 and 6), ADR 0019, ADR 0173.
+# Owner: release-operations
+# Secrets: none. AWS access is GitHub OIDC into the role in the `testbed` environment variable TESTBED_DEPLOY_ROLE_ARN
+#          (trusts repo:figentra/stackra:environment:testbed only). The stack config is ids and CIDRs, no secret, so
+#          the Pulumi passphrase is empty by design. The Infisical ids come from the organization variables.
+name: Apply testbed
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview, up, or build-image (start the image pipeline once)"
+        type: choice
+        options: [preview, up, build-image]
+        default: preview
+      region:
+        description: "The region's stack, testbed-<region> (STA-2042). eu-west-1 is the home: apply it first; build-image runs there only"
+        type: choice
+        options: [eu-west-1, eu-west-2, eu-central-1, us-east-1]
+        default: eu-west-1
+      groups:
+        description: "Declare the Auto Scaling groups (untick only before the first image exists)"
+        type: boolean
+        default: true
+      heavy_min:
+        description: "Heavy group minimum: 0, so the image build fits the on-demand quota (ADR 0516)"
+        type: choice
+        options: ["0"]
+        default: "0"
+      light_min:
+        description: "Light group minimum: 0, boxes start on demand (ADR 0516)"
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+
+concurrency:
+  group: apply-testbed-${{ inputs.region }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  apply:
+    name: Apply infra-testbed (${{ inputs.action }}, ${{ inputs.region }})
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: testbed
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC token, exchanged with AWS STS for the deploy role
+    env:
+      AWS_REGION: eu-west-1
+      ROLE_ARN: ${{ vars.TESTBED_DEPLOY_ROLE_ARN }}
+      SSH_CIDRS: ${{ vars.TESTBED_SSH_CIDRS }}
+      IDENTITY_ID: ${{ vars.INFISICAL_GATE_IDENTITY_ID }}
+      PROJECT_ID: ${{ vars.INFISICAL_GATE_PROJECT_ID }}
+      STATE_BUCKET: stackra-pulumi-state-591473336656
+      PULUMI_TOOL: pulumi@3.268.0
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_CONFIG_PASSPHRASE: "" # the stack holds no secret (see Secrets above)
+      REGION: ${{ inputs.region }}
+      STACK: testbed-${{ inputs.region }}
+      HOME_REGION: eu-west-1
+      ACTION: ${{ inputs.action }}
+      DECLARE_GROUPS: ${{ inputs.groups }}
+      HEAVY_MIN: ${{ inputs.heavy_min }}
+      LIGHT_MIN: ${{ inputs.light_min }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Toolchain (mise)
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          install_args: node pnpm
+
+      - name: Prerequisites
+        run: |
+          for name in ROLE_ARN IDENTITY_ID PROJECT_ID; do
+            [ -n "${!name}" ] || { echo "::error title=$name::missing (runbook: test-infrastructure, Step 2)"; exit 1; }
+          done
+          # One image pipeline, in the home region; its distribution copies each AMI to every region (STA-2042).
+          if [ "$ACTION" = build-image ] && [ "$REGION" != "$HOME_REGION" ]; then
+            echo "::error title=build-image::runs in the home region ($HOME_REGION) only; its build reaches every region"
+            exit 1
+          fi
+          mise install "$PULUMI_TOOL"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter=!@figentra/mobile --filter=!@figentra/playground
+
+      # Gen runs in the member only: a turbo `test` pulls in //#gen:workspace, which covers every member, and the
+      # playground left out of the install above cannot resolve its kind bases there (STA-1951). Builds need no gen.
+      - name: Test and build
+        run: |
+          pnpm turbo run build --filter=@stackra/infra-testbed... --filter=@stackra/cli...
+          (cd packages/infrastructure/infra-testbed && node ../../developer/cli/dist/stackra.mjs gen)
+          pnpm --filter @stackra/infra-testbed test
+
+      - name: AWS (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: apply-testbed-${{ github.run_id }}
+
+      # Pulumi's S3 backend locks with objects in the bucket itself, so no lock table is needed.
+      - name: State bucket
+        run: |
+          set -euo pipefail
+          if ! aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
+            aws s3api create-bucket --bucket "$STATE_BUCKET" --create-bucket-configuration "LocationConstraint=$AWS_REGION"
+            aws s3api put-public-access-block --bucket "$STATE_BUCKET" --public-access-block-configuration \
+              BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+            aws s3api put-bucket-versioning --bucket "$STATE_BUCKET" --versioning-configuration Status=Enabled
+          fi
+
+      - name: Pulumi ${{ inputs.action }}
+        working-directory: packages/infrastructure/infra-testbed/pulumi
+        run: |
+          set -euo pipefail
+          pulumi() { mise exec "$PULUMI_TOOL" -- pulumi --non-interactive "$@"; }
+          pulumi login "s3://$STATE_BUCKET?region=$AWS_REGION"
+          # Once: the single-region stack `testbed` becomes the home region's `testbed-eu-west-1`, state and all.
+          stacks=$(pulumi stack ls --json | jq -r '.[].name | sub("^.*/"; "")')
+          # Only `up` renames; a preview before it reads the old stack, so a preview never changes the state.
+          if [ "$STACK" = "testbed-$HOME_REGION" ] && printf '%s\n' "$stacks" | grep -qx testbed \
+            && ! printf '%s\n' "$stacks" | grep -qx "$STACK"; then
+            if [ "$ACTION" = up ]; then
+              pulumi stack rename "$STACK" --stack testbed
+              echo "::notice title=State::renamed the stack testbed to $STACK"
+            else
+              STACK=testbed
+              echo "::notice title=State::previewing the old stack testbed; the next up renames it to testbed-$HOME_REGION"
+            fi
+          fi
+          pulumi stack select --create "$STACK"
+          pulumi config set region "$REGION"
+          pulumi config set identityId "$IDENTITY_ID"
+          pulumi config set ciGateProjectId "$PROJECT_ID"
+          # TESTBED_SSH_CIDRS is optional: a comma-separated port-22 allowlist for `stackra testbed --ssh-direct` only.
+          # Unset, the boxes have no inbound rule and the CLI reaches them through SSM Session Manager (STA-1953).
+          i=0
+          for cidr in $(printf '%s' "$SSH_CIDRS" | tr ',' ' '); do
+            pulumi config set --path "sshCidrs[$i]" "$cidr"
+            i=$((i + 1))
+          done
+          pulumi config set groups "$DECLARE_GROUPS"
+          pulumi config set heavyMin "$HEAVY_MIN"
+          pulumi config set lightMin "$LIGHT_MIN"
+          # Image Builder components and recipes are kept in AWS when replaced (retainOnDelete, STA-1953). The engine
+          # reads that flag from the state, so a version created before the flag existed gets it here once; without it,
+          # the replace asks AWS to delete a version an image uses, which AWS refuses. Idempotent: no change, no import.
+          if [ "$ACTION" = up ]; then
+            state="$RUNNER_TEMP/testbed-state.json"
+            versions='(.type == "aws:imagebuilder/component:Component" or .type == "aws:imagebuilder/imageRecipe:ImageRecipe")'
+            pulumi stack export --file "$state"
+            if jq -e "[.deployment.resources[] | select($versions and .retainOnDelete != true)] | length > 0" "$state" >/dev/null; then
+              jq "(.deployment.resources[] | select($versions)).retainOnDelete = true" "$state" > "$state.retained"
+              pulumi stack import --file "$state.retained"
+              echo "::notice title=State::kept the existing Image Builder versions in AWS on replace (retainOnDelete)"
+            fi
+            rm -f "$state" "$state.retained"
+          fi
+          case "$ACTION" in
+            up) pulumi up --yes --diff ;;
+            preview) pulumi preview --diff ;;
+            build-image)
+              arn=$(pulumi stack output testbed --json | jq -r .imagePipelineArn)
+              aws imagebuilder start-image-pipeline-execution --image-pipeline-arn "$arn"
+              echo "::notice title=Image build started::30 to 60 minutes; then run this workflow with action up and groups ticked."
+              ;;
+          esac

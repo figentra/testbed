@@ -1,0 +1,73 @@
+# Stackra file contract:
+# Purpose: EC2 Image Builder component `testbed-agent`: installs the box agent at /usr/local/bin/testbed-agent and its
+#          guard and idle systemd timers (every five minutes), warms the shared pnpm store on /data from the core
+#          lockfile, and cleans the build instance so the AMI carries no history.
+# Boundary: build-time only. The warm-up is best effort: packages that need a registry token fail to fetch here and are
+#           fetched at job time, under the job's Infisical token. No secret is read or written.
+# Owner: release-operations · Secrets: forbidden
+# Governing contract: ADR 0484 (decisions 2, 4 and 5).
+name: testbed-agent
+description: Box agent, its timers, a warm pnpm store and a clean build instance
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: Agent
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              install -m 0755 /opt/testbed-build/testbed-agent.sh /usr/local/bin/testbed-agent
+              for unit in guard idle; do
+                install -m 0644 /opt/testbed-build/testbed-$unit.service /opt/testbed-build/testbed-$unit.timer /etc/systemd/system/
+              done
+              mkdir -p /etc/testbed
+              systemctl daemon-reload
+              systemctl enable testbed-guard.timer testbed-idle.timer
+      - name: WarmStore
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              # `pnpm fetch` checks the lockfile against the workspace's catalogs and the pnpmfile's checksum, and
+              # resolves `@figentra-oss` from the scope in .npmrc (a registry name, no token), so all four come along;
+              # a copy stays in /etc/testbed/warm for the validate phase's offline check.
+              mkdir -p /tmp/warm /etc/testbed/warm
+              for f in pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.mjs .npmrc; do
+                cp "/opt/testbed-build/$f" /tmp/warm/
+                cp "/opt/testbed-build/$f" /etc/testbed/warm/
+              done
+              cd /tmp/warm
+              export MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml
+              # A failed fetch fails the build: an image with an empty store downloads every package on each new box.
+              # No scripts: filling the store needs none, and licence-gated postinstalls (uniwind-pro) fail without a
+              # job's tokens; each job's own install runs them.
+              PATH=/opt/mise/shims:$PATH pnpm fetch --ignore-scripts --store-dir /data/pnpm-store
+              chown -R ubuntu:ubuntu /data/pnpm-store
+              rm -rf /tmp/warm
+      - name: Clean
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -u
+              rm -rf /opt/testbed-build /var/lib/apt/lists/* /root/.cache /home/ubuntu/.cache
+              docker image prune -f || true
+              sync
+  - name: validate
+    steps:
+      - name: Check
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              /usr/local/bin/testbed-agent slot heavy | grep -qx free
+              systemctl is-enabled testbed-guard.timer testbed-idle.timer
+              # The warm store holds every package the lockfile names: an offline fetch from it must succeed.
+              rm -rf /tmp/warmcheck && cp -r /etc/testbed/warm /tmp/warmcheck && cd /tmp/warmcheck
+              MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml PATH=/opt/mise/shims:$PATH \
+                pnpm fetch --offline --ignore-scripts --store-dir /data/pnpm-store >/dev/null
+              cd / && rm -rf /tmp/warmcheck

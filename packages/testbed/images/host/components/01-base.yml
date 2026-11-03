@@ -1,0 +1,76 @@
+# Stackra file contract:
+# Purpose: EC2 Image Builder component `testbed-base`: the host's packages (Docker, XFS tools, rsync, jq), the AWS CLI,
+#          mise with the repository's Node, pnpm and Infisical CLI (the agent runs `pnpm fetch` and `infisical login`
+#          on the host), the data-volume mount unit, and Docker's data root on /data.
+# Boundary: build-time only. Double-at placeholders (bucket, pins) are filled by `awsTestbed` from the plan's toolchain pins and the
+#           inputs bucket; the build inputs arrive from that bucket. No secret is read or written.
+# Owner: release-operations · Secrets: forbidden
+# Governing contract: ADR 0484 (decisions 2 and 3).
+name: testbed-base
+description: Docker, XFS, mise toolchain and the /data volume unit for a testbed box
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: FetchInputs
+        action: S3Download
+        inputs:
+          - source: s3://@@BUCKET@@/build/*
+            destination: /opt/testbed-build/
+      - name: Packages
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends ca-certificates curl docker.io docker-buildx git jq rsync unzip util-linux xfsprogs
+              curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscli.zip
+              unzip -q /tmp/awscli.zip -d /tmp && /tmp/aws/install && rm -rf /tmp/aws /tmp/awscli.zip
+      - name: Toolchain
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              curl -fsSL https://mise.run | MISE_VERSION=@@MISE@@ MISE_INSTALL_PATH=/usr/local/bin/mise sh
+              export MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml MISE_YES=1
+              mise use --global node@@@NODE@@ pnpm@@@PNPM@@ github:Infisical/cli@@@INFISICAL@@
+              mise reshim
+              chmod -R a+rX /opt/mise
+      - name: DataVolume
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              install -m 0755 /opt/testbed-build/testbed-data-mount.sh /usr/local/sbin/testbed-data-mount
+              install -m 0644 /opt/testbed-build/testbed-data.service /etc/systemd/system/testbed-data.service
+              printf 'd /run/testbed 0775 ubuntu ubuntu -\n' > /etc/tmpfiles.d/testbed.conf
+              mkdir -p /etc/docker /etc/systemd/system/docker.service.d
+              printf '{"data-root":"/data/docker","log-driver":"local"}\n' > /etc/docker/daemon.json
+              printf '[Unit]\nRequires=testbed-data.service\nAfter=testbed-data.service\n' > /etc/systemd/system/docker.service.d/testbed-data.conf
+              systemctl daemon-reload
+              systemctl enable testbed-data.service
+              systemctl stop docker docker.socket || true
+              systemctl start testbed-data.service
+              systemctl start docker
+              usermod -aG docker ubuntu
+  - name: validate
+    steps:
+      - name: Check
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              export MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml
+              mountpoint -q /data
+              [ "$(findmnt -no FSTYPE /data)" = xfs ]
+              docker info 2>/dev/null | grep -q 'Docker Root Dir: /data/docker'
+              /opt/mise/shims/node --version | grep -qx 'v@@NODE@@'
+              /opt/mise/shims/pnpm --version | grep -qx '@@PNPM@@'
+              /opt/mise/shims/infisical --version
+              # The CLI reaches a box only through SSM Session Manager (STA-1953); the Ubuntu AMI ships the agent.
+              systemctl list-unit-files | grep -q amazon-ssm-agent

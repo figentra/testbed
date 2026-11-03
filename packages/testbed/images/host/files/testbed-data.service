@@ -1,0 +1,16 @@
+# Stackra file contract:
+# Purpose: formats (when empty) and mounts the data volume at /data before Docker and the agent timers.
+# Boundary: one-shot at boot; does nothing when /data is already mounted.
+# Owner: release-operations · Secrets: forbidden
+[Unit]
+Description=Testbed data volume at /data
+Before=docker.service testbed-guard.timer testbed-idle.timer
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/testbed-data-mount
+
+[Install]
+WantedBy=multi-user.target

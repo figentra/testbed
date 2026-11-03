@@ -1,0 +1,12 @@
+# Stackra file contract:
+# Purpose: runs `testbed-agent guard`: the disk guard pass (clean at 70%, drain at 85%).
+# Boundary: one-shot as ubuntu (in the docker group); started by testbed-guard.timer.
+# Owner: release-operations · Secrets: forbidden
+[Unit]
+Description=Testbed agent guard pass
+After=testbed-data.service docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/usr/local/bin/testbed-agent guard

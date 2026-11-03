@@ -1,0 +1,14 @@
+# Stackra file contract:
+# Purpose: runs testbed-idle.service five minutes after boot and every five minutes after.
+# Boundary: timer only.
+# Owner: release-operations · Secrets: forbidden
+[Unit]
+Description=Testbed agent idle timer
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

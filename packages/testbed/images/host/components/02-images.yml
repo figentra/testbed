@@ -1,0 +1,67 @@
+# Stackra file contract:
+# Purpose: EC2 Image Builder component `testbed-images`: builds the job image from images/job/Dockerfile (no build
+#          context) with the plan's pins, and pulls the pinned Postgres image, both into Docker's data root on /data so
+#          the AMI's data volume carries them and a box needs no pull at boot.
+# Boundary: build-time only; Double-at placeholders (bucket, pins) are filled by `awsTestbed`. No secret is read or written.
+# Owner: release-operations · Secrets: forbidden
+# Governing contract: ADR 0484 (decision 2).
+name: testbed-images
+description: Preload the testbed job image and the Postgres image
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: JobImage
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              cd /opt/testbed-build
+              docker build -t stackra-testbed-job:current \
+                --build-arg MISE_VERSION=@@MISE@@ --build-arg NODE_VERSION=@@NODE@@ --build-arg PNPM_VERSION=@@PNPM@@ \
+                --build-arg INFISICAL_VERSION=@@INFISICAL@@ --build-arg SHFMT_VERSION=@@SHFMT@@ \
+                --build-arg ENCORE_VERSION=@@ENCORE@@ --build-arg PLAYWRIGHT_VERSION=@@PLAYWRIGHT@@ - < Dockerfile
+      - name: PostgresImage
+        action: ExecuteBash
+        inputs:
+          commands:
+            - docker pull @@POSTGRES@@
+  - name: validate
+    steps:
+      - name: Check
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              set -eu
+              # Every tool a job calls, at its pin, and a headless Chromium launch, which proves its system libraries.
+              docker run --rm stackra-testbed-job:current sh -euc '
+                node --version | grep -qx "v@@NODE@@"
+                pnpm --version | grep -qx "@@PNPM@@"
+                infisical --version | grep -q "@@INFISICAL@@"
+                shfmt --version | grep -q "@@SHFMT@@"
+                encore version | grep -q "@@ENCORE@@"
+                git --version && zip -v >/dev/null && unzip -v >/dev/null && rsync --version >/dev/null
+                jq --version && python3 --version && docker --version && ssh -V
+                chrome=$(find /ms-playwright -type f \( -name chrome -o -name headless_shell \) | head -n 1)
+                [ -n "$chrome" ]
+                "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom about:blank >/dev/null
+                ffmpeg -version >/dev/null'
+              # All three browsers open a page, and a headed Chromium starts on the virtual display: Electron needs the
+              # same display and GTK stack.
+              docker run --rm stackra-testbed-job:current sh -euc '
+                cd /tmp && npm init -y >/dev/null && npm install --no-audit --no-fund "playwright@@@PLAYWRIGHT@@" >/dev/null
+                cat > browsers.cjs <<EOF
+              const pw = require("playwright");
+              (async () => {
+                for (const name of ["chromium", "firefox", "webkit"]) {
+                  const browser = await pw[name].launch();
+                  await (await browser.newPage()).setContent("<p>ok</p>");
+                  await browser.close();
+                }
+                await (await pw.chromium.launch({ headless: false })).close();
+              })().catch((error) => { console.error(error); process.exit(1); });
+              EOF
+                xvfb-run -a node browsers.cjs'
+              docker image inspect @@POSTGRES@@ >/dev/null
