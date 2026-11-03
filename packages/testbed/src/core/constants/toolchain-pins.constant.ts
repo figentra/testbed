@@ -13,7 +13,7 @@ export const TOOLCHAIN_PINS = {
   /** `mise.toml` `node`. */
   node: "24.22.0",
   /** `mise.toml` `pnpm`, equal to the root `packageManager`. */
-  pnpm: "12.6.0",
+  pnpm: "12.16.1",
   /** `mise.toml` `github:Infisical/cli`. */
   infisical: "0.44.2",
   /** `mise.toml` `shfmt`: `pnpm format:check` (and so `pnpm verify`) runs it over the shell scripts. */

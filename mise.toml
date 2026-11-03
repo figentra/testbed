@@ -6,12 +6,17 @@
 # Secrets: forbidden
 [tools]
 node = "24.22.0"
-pnpm = "12.6.0"
+pnpm = "12.16.1"
 # shell formatter for *.sh (oxfmt has no shell support); reads .editorconfig
 shfmt = "3.14.1"
 # The hooks' formatter and linter without a workspace install (matching the catalog).
 "npm:oxfmt" = "0.71.0"
 "npm:oxlint" = "1.86.0"
+# The hooks' secret scan, as in figentra/stackra.
+gitleaks = "8.30.1"
+# The hook runner itself, so a Mac installs the hooks without `pnpm install`: `mise exec lefthook -- lefthook install`.
+# Same version as `catalog:release` in pnpm-workspace.yaml (the box's `prepare` uses that one).
+lefthook = "2.2.1"
 # The Pulumi CLI the apply workflow installs (`PULUMI_TOOL` in .github/workflows/apply-testbed.yml).
 pulumi = "3.268.0"
 # The Infisical CLI the image installs (TOOLCHAIN_PINS.infisical).

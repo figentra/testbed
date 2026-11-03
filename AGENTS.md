@@ -20,6 +20,10 @@ runbook is `docs/runbook.md`; the box agent's contract is `.agents/specs/sta-162
   124 are what callers (Flow's gate, `ci-box`) depend on; a change updates the agent contract in the same change.
 - Tests sit in `__tests__/` beside their subject (`src/**/__tests__/<name>.test.ts`). Typecheck and tests run on a box
   (`testbed run`); the Mac runs only oxfmt and oxlint. Pulumi code is tested under `pulumi.runtime.setMocks` only.
+- **Hooks never install or test on a Mac.** Install them with `mise exec lefthook -- lefthook install` (lefthook is
+  pinned in `mise.toml`), never through `pnpm install`. `lefthook.yml` runs only mise-pinned tools (oxfmt, oxlint,
+  shfmt, gitleaks), never pnpm, since pnpm 12's exec installs the workspace; commitlint runs only where
+  `node_modules` already exists, so a Mac skips it. There is no pre-push hook.
 - Versions come only from the `pnpm-workspace.yaml` catalogs (`catalog:<name>`), exact, `catalogMode: strict`; the
   toolchain is pinned in `mise.toml`.
 - Secrets: names only. Never read, print, log or commit a value; a box gets a short-lived token for its granted paths.

@@ -52,7 +52,10 @@ approval on every run.
 ## Development
 
 ```sh
-mise install    # node, pnpm, shfmt, oxfmt, oxlint, pulumi
-pnpm install
-pnpm verify     # format, lint, typecheck, test, build — on a box: testbed run "<session> verify" . "pnpm verify"
+mise install                            # node, pnpm, shfmt, oxfmt, oxlint, gitleaks, lefthook, pulumi
+mise exec lefthook -- lefthook install  # the git hooks, with no pnpm install
+testbed run "<session> verify" . "pnpm install --frozen-lockfile && pnpm verify"   # on a box, never the Mac
 ```
+
+The hooks (`lefthook.yml`) run only the mise-pinned oxfmt, oxlint, shfmt and gitleaks, never pnpm; commitlint runs
+only where a workspace install already exists (a box), so a Mac skips it. Typecheck and tests run only on a box.
