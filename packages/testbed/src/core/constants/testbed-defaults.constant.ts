@@ -1,6 +1,6 @@
 /**
- * Stackra file contract:
- * Purpose: `TESTBED_DEFAULTS`, every default of the testbed that `stackra testbed` and `testbed-agent` also know: the
+ * Testbed file contract:
+ * Purpose: `TESTBED_DEFAULTS`, every default of the testbed that the `testbed` CLI and `testbed-agent` also know: the
  *          region, AWS profile, SSH user, security group and key names, the group names, the AMI parameter, the tag
  *          keys, the region's vCPU quotas, the disk, guard and idle numbers, the job label, the rsync excludes, and the reserved exit codes. It
  *          is the TypeScript form of `.agents/specs/sta-1626-testbed/agent-contract.md`.
@@ -12,10 +12,15 @@
 export const TESTBED_DEFAULTS = {
   region: "eu-west-1",
   /**
-   * The regions a pool may run in, in the order `stackra testbed run` tries them: the four of the old ci-boxes, each
+   * The regions a pool may run in, in the order `testbed run` tries them: the four of the old ci-boxes, each
    * inside its own quotas (ADR 0484 decision 8 as amended 2026-11-03, ADR 0516; STA-2042).
    */
   regions: ["eu-west-1", "eu-west-2", "eu-central-1", "us-east-1"],
+  /**
+   * The regions the CLI uses today, in `regions` order. A region joins by a one-line change here once its old pair is
+   * stopped; `regions` stays the full list the plan accepts (STA-2042).
+   */
+  enabledRegions: ["eu-west-1"],
   /** The home region's stack owns the global IAM roles, the build bucket and the image pipeline. */
   homeRegion: "eu-west-1",
   /** The instance role and profile every region's boxes use; the home stack declares both (IAM is global). */

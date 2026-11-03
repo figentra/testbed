@@ -1,0 +1,35 @@
+{
+  "name": "testbed-workspace",
+  "private": true,
+  "description": "The testbed: disposable, image-built EC2 boxes that run heavy checks, their Pulumi program, the box agent and the `testbed` CLI",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "scripts": {
+    "prepare": "lefthook install",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "oxfmt --write . && git ls-files -z '*.sh' ':!packages/testbed/images/**' ':!packages/testbed/src/agent/testbed-agent.sh' | xargs -0 shfmt -w",
+    "format:check": "oxfmt --check . && git ls-files -z '*.sh' ':!packages/testbed/images/**' ':!packages/testbed/src/agent/testbed-agent.sh' | xargs -0 shfmt -d",
+    "verify": "pnpm format:check && turbo run lint typecheck test build",
+    "changeset": "changeset",
+    "changeset:version": "changeset version && pnpm install --lockfile-only"
+  },
+  "devDependencies": {
+    "@changesets/changelog-git": "catalog:release",
+    "@changesets/cli": "catalog:release",
+    "@commitlint/cli": "catalog:release",
+    "@figentra-oss/flow": "catalog:",
+    "@stackra/commitlint-config": "catalog:stackra",
+    "lefthook": "catalog:release",
+    "oxfmt": "catalog:quality",
+    "oxlint": "catalog:quality",
+    "turbo": "catalog:build"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=12.0.0"
+  },
+  "packageManager": "pnpm@12.6.0"
+}

@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `testbedInputs(lockfilePath, pins)`, the Image Builder inputs of the testbed: the files uploaded to the build bucket (the job Dockerfile, the box agent, the data-volume script, the systemd units, the core lockfile and its pnpm-workspace.yaml), the three component documents with their placeholders, and one hash over all of it. The hash names the component and recipe versions, so a change to any input is a new recipe version.
  * Boundary: reads files from this package and the given lockfile; no cloud is called. Holds no secret.
  * Runtime: node

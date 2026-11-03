@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `awsTestbed(plan, options)`, the Pulumi program part that declares one region of the testbed (one stack per
  *          region, STA-2042): an AWS provider pinned to the plan's region; the `stackra-testbed` security group (SSH
  *          only from an optional allowlist, all egress); in the home region only, the global instance role and
@@ -50,11 +50,11 @@ function assumedBy(service: string): string {
  * @param plan - from `testbedPlan`.
  * @param options - the optional SSH allowlist, the core lockfile and optional network and tags.
  * @example
- * // figentra/infra, testbed/index.ts
+ * // pulumi/main.mjs
  * const config = new pulumi.Config();
  * export const testbed = awsTestbed(
  *   testbedPlan({ identityId: config.require("identityId"), ciGateProjectId: config.require("ciGateProjectId") }),
- *   { allowedCidrs: config.getObject<string[]>("sshCidrs") ?? [], lockfilePath: "../stackra/pnpm-lock.yaml" },
+ *   { allowedCidrs: config.getObject<string[]>("sshCidrs") ?? [], lockfilePath: config.require("lockfilePath") },
  * );
  */
 export function awsTestbed(plan: TestbedPlan, options: AwsTestbedOptions): AwsTestbed {
@@ -150,7 +150,7 @@ export function awsTestbed(plan: TestbedPlan, options: AwsTestbedOptions): AwsTe
         name: "stackra-testbed",
         imageId: `resolve:ssm:${plan.image.amiParameter}`,
         instanceType: plan.groups.heavy.instanceTypes[0] ?? "c7i.2xlarge",
-        // `stackra testbed` connects with this pair's key file (TESTBED_DEFAULTS.keyFile).
+        // `testbed` connects with this pair's key file (TESTBED_DEFAULTS.keyFile).
         keyName: D.keyPair,
         // The home stack owns the profile; a member region names it, since IAM is global (STA-2042).
         iamInstanceProfile: { name: home?.instanceProfile.name ?? D.instanceProfile },

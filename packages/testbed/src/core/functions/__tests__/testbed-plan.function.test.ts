@@ -1,25 +1,27 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `testbedPlan`: two disks with the 200 GB XFS volume at `/data`, both deleted with the
  *          instance; `heavy` on-demand and spot only on `light`; one region; the owner's counts and instance types;
  *          the region's vCPU quotas and the refusal of a plan above them (ADR 0516); the guard, idle and image numbers; grants only when a project id is given and no secret value anywhere;
- *          bad input refused; the toolchain pins equal `mise.toml` and the catalogue.
- * Boundary: test only; reads `mise.toml` and `pnpm-workspace.yaml` at the repository root, calls no cloud.
+ *          bad input refused; the toolchain pins equal core's `mise.toml` and catalogue.
+ * Boundary: test only; calls no cloud. The pin test reads `mise.toml` and `pnpm-workspace.yaml` from a checkout of
+ *           figentra/stackra named by `CORE_CHECKOUT` (the daily testbed-image job sets it) and is skipped without it.
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484 (Enforcement); ADR 0173.
  */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-import { describe, expect, it } from "@stackra/testing";
+import { describe, expect, it } from "vitest";
 
 import { TOOLCHAIN_PINS } from "#core/constants/toolchain-pins.constant";
 import { testbedPlan } from "#core/functions/testbed-plan.function";
 
-const ROOT = new URL("../../../../../../../", import.meta.url);
+/** A checkout of figentra/stackra, whose `mise.toml` and catalogue the pins must equal. */
+const CORE = process.env.CORE_CHECKOUT;
 
-function repoFile(name: string): string {
-  return readFileSync(fileURLToPath(new URL(name, ROOT)), "utf8");
+function coreFile(name: string): string {
+  return readFileSync(join(CORE ?? "", name), "utf8");
 }
 
 describe("testbedPlan", () => {
@@ -118,13 +120,13 @@ describe("testbedPlan", () => {
     expect(() => testbedPlan({ spot: true } as never)).toThrow();
   });
 
-  it("pins the toolchain to mise.toml and the catalogue", () => {
-    const mise = repoFile("mise.toml");
+  it.skipIf(CORE === undefined)("pins the toolchain to core's mise.toml and catalogue", () => {
+    const mise = coreFile("mise.toml");
     expect(mise).toContain(`node = "${TOOLCHAIN_PINS.node}"`);
     expect(mise).toContain(`pnpm = "${TOOLCHAIN_PINS.pnpm}"`);
     expect(mise).toContain(`"github:Infisical/cli" = "${TOOLCHAIN_PINS.infisical}"`);
     expect(mise).toContain(`shfmt = "${TOOLCHAIN_PINS.shfmt}"`);
-    expect(repoFile("pnpm-workspace.yaml")).toContain(
+    expect(coreFile("pnpm-workspace.yaml")).toContain(
       `"@playwright/test": ${TOOLCHAIN_PINS.playwright}`,
     );
     expect(plan.toolchain.node).toBe(TOOLCHAIN_PINS.node);

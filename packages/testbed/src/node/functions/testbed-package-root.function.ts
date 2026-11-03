@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `testbedPackageRoot()`, the folder of this package: the first parent holding its package.json (the same from `src/` and from `dist/`).
  * Boundary: reads package.json files upward from this module; no cloud is called.
  * Runtime: node
@@ -16,12 +16,11 @@ export function testbedPackageRoot(): string {
     const manifest = join(current, "package.json");
     if (
       existsSync(manifest) &&
-      (JSON.parse(readFileSync(manifest, "utf8")) as { name?: string }).name ===
-        "@stackra/infra-testbed"
+      (JSON.parse(readFileSync(manifest, "utf8")) as { name?: string }).name === "@figentra/testbed"
     )
       return current;
     const parent = dirname(current);
-    if (parent === current) throw new Error("@stackra/infra-testbed package root not found");
+    if (parent === current) throw new Error("@figentra/testbed package root not found");
     current = parent;
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `pickTestbedSlot` and `summarizeTestbedRegion` over fixtures: a free slot in region order, the
  *          next region when the first is full, a group raised where there is room (at once at 0, after two busy
  *          minutes with a box), waiting when nothing can be raised, a heavy job never on a light box, an unreachable
@@ -8,13 +8,13 @@
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484; the testbed regions contract (STA-2042).
  */
-import { describe, expect, it } from "@stackra/testing";
+import { describe, expect, it } from "vitest";
 
-import { pickTestbedSlot } from "#node/functions/pick-testbed-slot.function";
-import { summarizeTestbedRegion } from "#node/functions/summarize-testbed-region.function";
-import type { TestbedBoxState } from "#node/types/testbed-box-state.type";
-import type { TestbedGroupCounts } from "#node/types/testbed-group-counts.type";
-import type { TestbedRegionState } from "#node/types/testbed-region-state.type";
+import { pickTestbedSlot } from "#cli/functions/pick-testbed-slot.function";
+import { summarizeTestbedRegion } from "#cli/functions/summarize-testbed-region.function";
+import type { TestbedBoxState } from "#cli/types/testbed-box-state.type";
+import type { TestbedGroupCounts } from "#cli/types/testbed-group-counts.type";
+import type { TestbedRegionState } from "#cli/types/testbed-region-state.type";
 
 // @covers sta-2042:FR-005 sta-2042:FR-006 sta-2042:FR-012 sta-2042:P-005 sta-2042:P-012 sta-2042:AC-001 sta-2042:AC-005
 

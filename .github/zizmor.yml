@@ -1,0 +1,14 @@
+# Testbed file contract:
+# Purpose: zizmor's policy for `.github/workflows`, passed explicitly by the Quality Gate
+#          (`zizmor --config .github/zizmor.yml .github/workflows`). ADR 0019 D1: every action and reusable workflow is
+#          pinned to a full commit SHA, including the `actions/*` and `github/*` namespaces zizmor would accept at a
+#          tag. An accepted finding is an `ignore:` entry naming one `file:line` and its reason, never a whole rule or
+#          file.
+# Scope: .github/workflows
+# Owner: release-operations
+# Secrets: forbidden
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

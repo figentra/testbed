@@ -1,9 +1,9 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TESTBED_HEAVY_PATTERNS`, the words that put a command in the heavy slot (ci-box's list).
  * Boundary: data only.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 
 /** A command containing one of these takes the heavy slot; every other takes the light one. */

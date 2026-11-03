@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedPlanInput`, the optional inputs of `testbedPlan`.
  * Boundary: a type only, inferred from the zod schema.
  * Runtime: isomorphic

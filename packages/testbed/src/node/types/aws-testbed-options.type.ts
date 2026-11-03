@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `AwsTestbedOptions`, what `awsTestbed` takes besides the plan: the SSH allowlist, the core lockfile the
  *          image warms its pnpm store from, an optional VPC and subnets (the default VPC otherwise), extra tags, and
  *          `groups: false` for the first apply (image pipeline only, before the first AMI exists).

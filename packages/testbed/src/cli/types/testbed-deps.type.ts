@@ -1,13 +1,13 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedDeps`, everything `runTestbed` takes from outside: the processes it starts, the clock, the claim folder and this Mac's public IP, so tests fake all of it.
  * Boundary: type only; the command builds the real one, a test builds a fake.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import type { ToolOutput } from "#node/types/tool-output.type";
+import type { ToolOutput } from "#cli/types/tool-output.type";
 
-/** The outside world of one `stackra testbed` run. */
+/** The outside world of one `testbed` run. */
 export type TestbedDeps = {
   /** Runs a program without a shell and captures its output; `undefined` when it cannot start. */
   readonly exec: (command: string, args: readonly string[]) => Promise<ToolOutput | undefined>;

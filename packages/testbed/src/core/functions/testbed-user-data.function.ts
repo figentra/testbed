@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `testbedUserData(plan)`, the boot script of every testbed box: it writes `/etc/testbed/region`,
  *          `/etc/testbed/identity` (the Infisical machine identity id) and `/etc/testbed/grants.json` (project name to
  *          the Infisical project ids, environments and paths its jobs may read), and nothing else. Everything else a

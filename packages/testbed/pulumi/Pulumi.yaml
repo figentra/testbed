@@ -1,10 +1,10 @@
-# Stackra file contract:
+# Testbed file contract:
 # Purpose: the Pulumi project that applies the testbed (ADR 0484, STA-1626): `main.mjs` declares
 #          `awsTestbed(testbedPlan(...))` from this stack's config. Applied only by .github/workflows/apply-testbed.yml
-#          (manual, main, `testbed` environment, AWS by GitHub OIDC); see the runbook's "Step 2 in detail".
-# Boundary: one stack, `testbed`. State lives in s3://stackra-pulumi-state-591473336656 (eu-west-1). The workflow sets
-#           its config (ids and CIDRs, no secret) on every run, so no Pulumi.testbed.yaml is committed. Stands in for
-#           the program `stackra infra gen` will compose.
+#          (manual, main, `testbed` environment, AWS by GitHub OIDC); see docs/runbook.md.
+# Boundary: one stack per region, `testbed-<region>`. State lives in s3://stackra-pulumi-state-591473336656
+#           (eu-west-1). The workflow sets its config (ids, CIDRs and the core lockfile path, no secret) on every run,
+#           so no Pulumi.<stack>.yaml is committed. The project name is a live name: renaming it orphans the state.
 # Runtime: Pulumi CLI (nodejs)
 # Governing contract: ADR 0484; ADR 0171 (decisions 4 and 6); ADR 0173.
 name: stackra-testbed
@@ -12,6 +12,6 @@ description: The shared test boxes (image pipeline, heavy and light Auto Scaling
 runtime:
   name: nodejs
   options:
-    # Plain ESM over the built package (run `turbo build --filter @stackra/infra-testbed` first), so no ts-node.
+    # Plain ESM over the built package (run `pnpm --filter @figentra/testbed build` first), so no ts-node.
     typescript: false
 main: main.mjs

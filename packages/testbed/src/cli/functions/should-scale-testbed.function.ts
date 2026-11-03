@@ -1,12 +1,12 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `shouldScaleTestbed(state)`, whether a group grows by one: every slot of its kind has been busy two minutes
  *          and the group is below its maximum.
- * Boundary: pure.
+ * Boundary: pure; the wait is `TESTBED_DEFAULTS.scaleUpAfterMinutes`.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import { TESTBED_SCALE_AFTER_MS } from "#node/constants/testbed-scale-after-ms.constant";
+import { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";
 
 /**
  * Whether to raise the group's desired count.
@@ -23,7 +23,7 @@ export function shouldScaleTestbed(state: {
 }): boolean {
   return (
     state.busySince !== undefined &&
-    state.now - state.busySince >= TESTBED_SCALE_AFTER_MS &&
+    state.now - state.busySince >= TESTBED_DEFAULTS.scaleUpAfterMinutes * 60_000 &&
     state.desired < state.max
   );
 }

@@ -1,0 +1,20 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+# Testbed file contract:
+# Purpose: pins the toolchain, matching figentra/stackra. `pnpm` here must match `packageManager` in package.json.
+#          The TOOLCHAIN_PINS test reads `node`, `pnpm`, `github:Infisical/cli` and `shfmt` from this file.
+# Owner: release-operations
+# Secrets: forbidden
+[tools]
+node = "24.22.0"
+pnpm = "12.6.0"
+# shell formatter for *.sh (oxfmt has no shell support); reads .editorconfig
+shfmt = "3.14.1"
+# The hooks' formatter and linter without a workspace install (matching the catalog).
+"npm:oxfmt" = "0.71.0"
+"npm:oxlint" = "1.86.0"
+# The Pulumi CLI the apply workflow installs (`PULUMI_TOOL` in .github/workflows/apply-testbed.yml).
+pulumi = "3.268.0"
+# The Infisical CLI the image installs (TOOLCHAIN_PINS.infisical).
+"github:Infisical/cli" = "0.44.2"
+# The aws CLI's Session Manager plugin: `testbed` reaches the boxes by SSH through SSM.
+"aqua:aws/session-manager-plugin" = "1.2.896.0"

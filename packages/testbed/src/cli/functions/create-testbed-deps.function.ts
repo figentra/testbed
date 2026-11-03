@@ -1,18 +1,18 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `createTestbedDeps(cwd, io)`, the real `TestbedDeps`: processes through `runCaptured` and `runProcess` (no
  *          shell), this Mac's public IP from checkip.amazonaws.com, and the claim folder `/tmp/ci-claim`.
- * Boundary: the only place `stackra testbed` touches the clock, the network and process liveness.
+ * Boundary: the only place `testbed` touches the clock, the network and process liveness.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import { runCaptured } from "#node/functions/run-captured.function";
-import { runProcess } from "#node/functions/run-process.function";
-import type { CliIo } from "#node/types/cli-io.type";
-import type { TestbedDeps } from "#node/types/testbed-deps.type";
+import { runCaptured } from "#cli/functions/run-captured.function";
+import { runProcess } from "#cli/functions/run-process.function";
+import type { CliIo } from "#cli/types/cli-io.type";
+import type { TestbedDeps } from "#cli/types/testbed-deps.type";
 
 /**
- * The real dependencies of one `stackra testbed` run.
+ * The real dependencies of one `testbed` run.
  *
  * @param cwd - the directory started processes run in.
  * @param io - where streamed processes write.

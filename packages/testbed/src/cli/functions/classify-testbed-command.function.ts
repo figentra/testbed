@@ -1,12 +1,12 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `classifyTestbedCommand(command)`, the slot a command takes: `heavy` for encore test, playwright, e2e, act
  *          and build, otherwise `light`.
  * Boundary: pure; substring match, as ci-box did.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import { TESTBED_HEAVY_PATTERNS } from "#node/constants/testbed-heavy-patterns.constant";
+import { TESTBED_HEAVY_PATTERNS } from "#cli/constants/testbed-heavy-patterns.constant";
 
 /**
  * The slot kind `command` takes.

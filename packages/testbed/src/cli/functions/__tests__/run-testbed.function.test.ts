@@ -1,8 +1,9 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `runTestbed` with fake processes: the nested-call refusal, a light job on a free box,
- *          another box on exit 75, a light job retried once after a lost box, `--on-demand`, `--no-wait`, the fallback dispatch, and
- *          that the fallback input is the preset and the ref only; SSM access by instance id by default, and the
+ *          another box on exit 75, a light job retried once after a lost box, `--on-demand`, `--no-wait`, the
+ *          fallback dispatch with the preset and the ref only, and no dispatch (a hint and exit 75) in a repository
+ *          without the fallback workflow; SSM access by instance id by default, and the
  *          public IP with the allowlist swap only under `--ssh-direct`; and across regions: the next region when the
  *          first is full, a group raised where there is room, no call outside the enabled list, each box's own region
  *          in its calls, `run --json` (one stdout line, the reserved exit codes), `status` and `status --json`, and
@@ -11,26 +12,47 @@
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "@stackra/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { captureIo } from "#node/functions/capture-io.function";
-import { runTestbed } from "#node/functions/run-testbed.function";
-import type { TestbedDeps } from "#node/types/testbed-deps.type";
-import type { TestbedRequest } from "#node/types/testbed-request.type";
+import { runTestbed } from "#cli/functions/run-testbed.function";
+import type { TestbedDeps } from "#cli/types/testbed-deps.type";
+import type { CliIo } from "#cli/types/cli-io.type";
+import type { TestbedRequest } from "#cli/types/testbed-request.type";
 
 let claimRoot: string;
 
 beforeEach(() => {
-  claimRoot = mkdtempSync(join(tmpdir(), "stackra-testbed-"));
+  claimRoot = mkdtempSync(join(tmpdir(), "testbed-claims-"));
 });
 
 afterEach(() => {
   rmSync(claimRoot, { recursive: true, force: true });
 });
+
+/** An io that collects stdout and stderr together, in order. */
+const captureIo = (): { readonly io: CliIo; readonly output: () => string } => {
+  let text = "";
+  const write = (chunk: string): void => {
+    text += chunk;
+  };
+  return { io: { out: write, err: write, inherit: false }, output: () => text };
+};
+
+/** A throwaway repository in the claim folder, with the fallback workflow when `withFallback`. */
+const repository = (withFallback: boolean): string => {
+  const root = join(claimRoot, "repo");
+  const workflows = join(root, ".github", "workflows");
+  mkdirSync(join(root, ".git"), { recursive: true });
+  if (withFallback) {
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, "testbed-fallback.yml"), "on: workflow_dispatch\n");
+  }
+  return root;
+};
 
 // @covers sta-2042:FR-005 sta-2042:FR-006 sta-2042:FR-007 sta-2042:FR-009 sta-2042:FR-010 sta-2042:FR-011
 // @covers sta-2042:FR-012 sta-2042:P-005 sta-2042:P-006 sta-2042:P-007 sta-2042:P-009 sta-2042:P-010
@@ -135,7 +157,7 @@ const rule = (verb: string, cidr: string): string =>
   `aws --profile p --region r ec2 ${verb}-security-group-ingress --group-name stackra-testbed --protocol tcp --port 22 --cidr ${cidr}`;
 
 describe("runTestbed run", () => {
-  it("refuses a command that calls ci-box or stackra testbed with exit 2", async () => {
+  it("refuses a command that calls testbed or ci-box with exit 2", async () => {
     const { deps, streams } = fake({ boxes: "[]" });
     const { io, output } = captureIo();
     const code = await runTestbed(request({ args: ["w", "/tmp/app", "ci-box status"] }), deps, io);
@@ -255,12 +277,25 @@ describe("runTestbed run", () => {
   it("dispatches the fallback workflow with the preset and the ref only", async () => {
     const { deps, streams } = fake({ boxes: "[]" });
     const code = await runTestbed(
-      request({ preset: "verify", ref: "feat/x" }),
+      request({ preset: "verify", ref: "feat/x", cwd: repository(true) }),
       deps,
       captureIo().io,
     );
     expect(code).toBe(0);
     expect(streams).toEqual(["gh workflow run testbed-fallback.yml --ref feat/x -f preset=verify"]);
+  });
+
+  it("skips the dispatch with a hint and exits 75 when the repository has no fallback workflow", async () => {
+    const { deps, streams } = fake({ boxes: "[]" });
+    const { io, output } = captureIo();
+    const code = await runTestbed(
+      request({ preset: "verify", ref: "feat/x", cwd: repository(false) }),
+      deps,
+      io,
+    );
+    expect(code).toBe(75);
+    expect(streams).toEqual([]);
+    expect(output()).toContain("has no .github/workflows/testbed-fallback.yml");
   });
 });
 
@@ -417,7 +452,7 @@ describe("runTestbed run --json", () => {
     expect(result).toMatchObject({ region: "b", box: "i-l", slot: "light", exitCode: 0 });
     expect(Number.isInteger(result["waitSeconds"])).toBe(true);
     expect(Number.isInteger(result["runSeconds"])).toBe(true);
-    expect(err.join("")).toContain("stackra testbed: box 1 (b)");
+    expect(err.join("")).toContain("testbed: box 1 (b)");
   });
 
   it("exits with the job's own status, 124 included, and reports it", async () => {

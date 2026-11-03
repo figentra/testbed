@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `testbedPlan(input?)`, the testbed as plain data for one of the four regions, `home` when it is eu-west-1
  *          (the home also builds the image, STA-2042): a `heavy` on-demand group (c7i.2xlarge, 0 to 1) and a
  *          `light` spot group (c7i, c6i and m7i 2xlarge, 0 to 1), sized to the region's vCPU quotas (8 on-demand,

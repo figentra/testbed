@@ -1,0 +1,43 @@
+# Testbed file contract:
+# Purpose: git hooks — pre-commit format and lint on staged files, commit-msg conventional commits. Advisory; CI is
+#          the gate. Installed by `pnpm install` (prepare). No pre-push: typecheck and tests run on a box
+#          (`testbed run`), never on the Mac.
+# Owner: release-operations
+# Secrets: forbidden
+pre-commit:
+  parallel: true
+  jobs:
+    - name: oxfmt
+      glob: "*.{js,mjs,ts,json,jsonc,yaml,yml,md}"
+      # oxfmt exits 2 when every staged file is ignored: that is not a finding.
+      # The mise-pinned oxfmt runs without a workspace install, so a commit never installs; pnpm's is the fallback where
+      # mise is missing.
+      run: >-
+        sh -c 'if command -v mise >/dev/null 2>&1; then mise exec -- oxfmt --check "$@"; else pnpm exec oxfmt --check "$@"; fi;
+        s=$?; [ $s -eq 2 ] && exit 0; exit $s' -- {staged_files}
+    - name: shfmt
+      glob: "*.sh"
+      # The hashed image inputs are frozen bytes (AGENTS.md), never reformatted.
+      exclude:
+        - "packages/testbed/images/**"
+        - "packages/testbed/src/agent/testbed-agent.sh"
+      run: |
+        if command -v shfmt >/dev/null 2>&1; then
+          shfmt -d {staged_files}
+        else
+          echo "shfmt not installed (mise install) — CI still checks"
+        fi
+    - name: oxlint
+      glob: "*.{js,mjs,ts}"
+      run: sh -c 'if command -v mise >/dev/null 2>&1; then exec mise exec -- oxlint "$@"; fi; exec pnpm exec oxlint "$@"' -- {staged_files}
+
+commit-msg:
+  jobs:
+    # commitlint reads the preset from node_modules, so it needs an install; without one it is advisory here.
+    - name: commitlint
+      run: |
+        if [ -x node_modules/.bin/commitlint ]; then
+          pnpm exec commitlint --edit {1}
+        else
+          echo "commitlint not installed (pnpm install) — CI checks the pull request's commits"
+        fi

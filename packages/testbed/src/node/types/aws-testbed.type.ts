@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `AwsTestbed`, what `awsTestbed` returns: the ids a stack exports and the owner copies (the instance role
  *          ARN goes into the Infisical machine identity's AWS auth, the AMI parameter and the pipeline ARN into the
  *          image runbook).

@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedComponentSource`, one Image Builder component: its name and its document with placeholders.
  * Boundary: a type only.
  * Runtime: node

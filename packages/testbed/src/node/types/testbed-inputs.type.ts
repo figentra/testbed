@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedInputs`, the whole set of Image Builder inputs with the version derived from its hash.
  * Boundary: a type only.
  * Runtime: node

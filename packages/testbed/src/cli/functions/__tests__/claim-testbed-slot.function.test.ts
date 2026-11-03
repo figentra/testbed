@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `claimTestbedSlot`, `releaseTestbedClaim` and `isTestbedClaimStale`: a free claim, a held
  *          one, a stale one and release.
  * Boundary: test only; writes a throwaway folder in the OS temp directory.
@@ -10,16 +10,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "@stackra/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { claimTestbedSlot } from "#node/functions/claim-testbed-slot.function";
-import { isTestbedClaimStale } from "#node/functions/is-testbed-claim-stale.function";
-import { releaseTestbedClaim } from "#node/functions/release-testbed-claim.function";
+import { claimTestbedSlot } from "#cli/functions/claim-testbed-slot.function";
+import { isTestbedClaimStale } from "#cli/functions/is-testbed-claim-stale.function";
+import { releaseTestbedClaim } from "#cli/functions/release-testbed-claim.function";
 
 let root: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "stackra-claim-"));
+  root = mkdtempSync(join(tmpdir(), "testbed-claim-"));
 });
 
 afterEach(() => {

@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `testbed-agent.sh` against stubbed docker, aws, infisical, pnpm and df on PATH: the 70%
  *          cleanup (finished job folders, stale seeds, dangling images), the 85% refusal (exit 75, `unhealthy: disk`)
  *          and the drain (an unhealthy mark only with no job running), a busy slot (exit 73), cleanup and scale-in
@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "@stackra/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";
 

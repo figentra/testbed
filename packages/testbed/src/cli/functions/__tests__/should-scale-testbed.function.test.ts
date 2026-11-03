@@ -1,16 +1,16 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: unit tests of `shouldScaleTestbed`, `decideTestbedFallback` and `resolveTestbedSettings`: the scale
  *          decision, the fallback decision and the settings order, the enabled regions included.
  * Boundary: test only.
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484.
  */
-import { describe, expect, it } from "@stackra/testing";
+import { describe, expect, it } from "vitest";
 
-import { decideTestbedFallback } from "#node/functions/decide-testbed-fallback.function";
-import { resolveTestbedSettings } from "#node/functions/resolve-testbed-settings.function";
-import { shouldScaleTestbed } from "#node/functions/should-scale-testbed.function";
+import { decideTestbedFallback } from "#cli/functions/decide-testbed-fallback.function";
+import { resolveTestbedSettings } from "#cli/functions/resolve-testbed-settings.function";
+import { shouldScaleTestbed } from "#cli/functions/should-scale-testbed.function";
 
 describe("shouldScaleTestbed", () => {
   it("grows the group after two busy minutes while below the maximum", () => {

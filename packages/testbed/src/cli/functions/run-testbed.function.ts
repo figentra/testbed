@@ -1,10 +1,11 @@
 /**
- * Stackra file contract:
- * Purpose: `runTestbed(request, deps, io)`, every `stackra testbed` verb: `run` (look at every enabled region, pick a
+ * Testbed file contract:
+ * Purpose: `runTestbed(request, deps, io)`, every `testbed` verb: `run` (look at every enabled region, pick a
  *          free slot or a group to raise with `pickTestbedSlot`, claim it, prepare the job directory, rsync into it,
  *          run the command under the box's lock, retry on exit 75, 73 and a lost light box, dispatch the GitHub
- *          fallback; `--json` prints one result line), `status` (every region, also `--json`), `unlock`, `ip`, `ssh`,
- *          `sync`, `scale` and `image`. It replaces the Mac script `ci-box`. A box is reached by SSH through SSM
+ *          fallback when the caller's repository has its workflow; `--json` prints one result line), `status`
+ *          (every region, also `--json`), `unlock`, `ip`, `ssh`, `sync`, `scale` and `image`. It replaces the Mac
+ *          script `ci-box`. A box is reached by SSH through SSM
  *          Session Manager (`ProxyCommand`, `AWS-StartSSHSession`, the instance id), so the security group needs no
  *          inbound rule; `--ssh-direct` reaches the public IP and swaps this machine's address into the allowlist.
  *          Every box carries its region, and the SSM proxy and each `aws` call for it use that region.
@@ -13,36 +14,38 @@
  *           prints or passes a secret value (the key is a file path), and it never runs a job on the Mac. The job's
  *           own output goes wherever `deps.stream` writes (the command points it at stderr under `--json`).
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); the agent contract in the testbed spec; ADR 0282 (decision 3); STA-1953
- *                     (SSM access); the testbed regions contract (STA-2042).
+ * Governing contract: ADR 0484 (the testbed); the agent contract in the testbed spec; ADR 0522 (the `testbed` CLI);
+ *                     STA-1953 (SSM access); the testbed regions contract (STA-2042).
  */
 import { resolve } from "node:path";
 
-import { TESTBED_CLI_DEFAULTS } from "#node/constants/testbed-cli-defaults.constant";
-import { TESTBED_EXIT } from "#node/constants/testbed-exit.constant";
-import { TESTBED_POLL_MS } from "#node/constants/testbed-poll-ms.constant";
-import { TESTBED_PRESETS } from "#node/constants/testbed-presets.constant";
-import { TESTBED_RSYNC_EXCLUDES } from "#node/constants/testbed-rsync-excludes.constant";
-import { CliUsageError } from "#node/errors/cli-usage.error";
-import { claimTestbedSlot } from "#node/functions/claim-testbed-slot.function";
-import { classifyTestbedCommand } from "#node/functions/classify-testbed-command.function";
-import { decideTestbedFallback } from "#node/functions/decide-testbed-fallback.function";
-import { orderTestbedBoxes } from "#node/functions/order-testbed-boxes.function";
-import { parseTestbedBoxes } from "#node/functions/parse-testbed-boxes.function";
-import { pickTestbedSlot } from "#node/functions/pick-testbed-slot.function";
-import { refusesTestbedCommand } from "#node/functions/refuses-testbed-command.function";
-import { releaseTestbedClaim } from "#node/functions/release-testbed-claim.function";
-import { summarizeTestbedRegion } from "#node/functions/summarize-testbed-region.function";
-import { testbedProject } from "#node/functions/testbed-project.function";
-import type { CliIo } from "#node/types/cli-io.type";
-import type { TestbedBox } from "#node/types/testbed-box.type";
-import type { TestbedBoxState } from "#node/types/testbed-box-state.type";
-import type { TestbedDeps } from "#node/types/testbed-deps.type";
-import type { TestbedGroupCounts } from "#node/types/testbed-group-counts.type";
-import type { TestbedRegionState } from "#node/types/testbed-region-state.type";
-import type { TestbedRequest } from "#node/types/testbed-request.type";
-import type { TestbedSlotPick } from "#node/types/testbed-slot-pick.type";
-import type { ToolOutput } from "#node/types/tool-output.type";
+import { TESTBED_FALLBACK_WORKFLOW } from "#cli/constants/testbed-fallback-workflow.constant";
+import { TESTBED_POLL_MS } from "#cli/constants/testbed-poll-ms.constant";
+import { TESTBED_PRESETS } from "#cli/constants/testbed-presets.constant";
+import { CliUsageError } from "#cli/errors/cli-usage.error";
+import { claimTestbedSlot } from "#cli/functions/claim-testbed-slot.function";
+import { classifyTestbedCommand } from "#cli/functions/classify-testbed-command.function";
+import { decideTestbedFallback } from "#cli/functions/decide-testbed-fallback.function";
+import { hasTestbedFallback } from "#cli/functions/has-testbed-fallback.function";
+import { orderTestbedBoxes } from "#cli/functions/order-testbed-boxes.function";
+import { parseTestbedBoxes } from "#cli/functions/parse-testbed-boxes.function";
+import { pickTestbedSlot } from "#cli/functions/pick-testbed-slot.function";
+import { refusesTestbedCommand } from "#cli/functions/refuses-testbed-command.function";
+import { releaseTestbedClaim } from "#cli/functions/release-testbed-claim.function";
+import { summarizeTestbedRegion } from "#cli/functions/summarize-testbed-region.function";
+import { testbedProject } from "#cli/functions/testbed-project.function";
+import type { CliIo } from "#cli/types/cli-io.type";
+import type { TestbedBox } from "#cli/types/testbed-box.type";
+import type { TestbedBoxState } from "#cli/types/testbed-box-state.type";
+import type { TestbedDeps } from "#cli/types/testbed-deps.type";
+import type { TestbedGroupCounts } from "#cli/types/testbed-group-counts.type";
+import type { TestbedRegionState } from "#cli/types/testbed-region-state.type";
+import type { TestbedRequest } from "#cli/types/testbed-request.type";
+import type { TestbedSlotPick } from "#cli/types/testbed-slot-pick.type";
+import type { ToolOutput } from "#cli/types/tool-output.type";
+import { TESTBED_DEFAULTS } from "#core/constants/testbed-defaults.constant";
+
+const { exitCodes: EXIT } = TESTBED_DEFAULTS;
 
 const NOT_STARTED: ToolOutput = { code: 127, stdout: "", stderr: "cannot start" };
 
@@ -66,7 +69,7 @@ const hostsSlot = (group: string, kind: string): boolean => group === "heavy" ||
 const seconds = (milliseconds: number): number => Math.floor(milliseconds / 1000);
 
 /**
- * Runs one `stackra testbed` call and resolves with its exit code.
+ * Runs one `testbed` call and resolves with its exit code.
  *
  * @param request - the parsed command line.
  * @param deps - the processes, clock and claim folder.
@@ -80,7 +83,7 @@ export async function runTestbed(
   io: CliIo,
 ): Promise<number> {
   const { settings } = request;
-  const say = (text: string): void => io.err(`stackra testbed: ${text}\n`);
+  const say = (text: string): void => io.err(`testbed: ${text}\n`);
 
   // Every call names its region: an enabled one (`settings.regions`) or the region of a box found there.
   const aws = async (region: string, args: readonly string[]): Promise<ToolOutput> =>
@@ -93,10 +96,10 @@ export async function runTestbed(
       "ec2",
       "describe-instances",
       "--filters",
-      `Name=tag-key,Values=${TESTBED_CLI_DEFAULTS.tag}`,
+      `Name=tag-key,Values=${TESTBED_DEFAULTS.groupTagKey}`,
       "Name=instance-state-name,Values=running",
       "--query",
-      `Reservations[].Instances[].{id:InstanceId,ip:PublicIpAddress,group:Tags[?Key==\`${TESTBED_CLI_DEFAULTS.tag}\`]|[0].Value,launch:LaunchTime}`,
+      `Reservations[].Instances[].{id:InstanceId,ip:PublicIpAddress,group:Tags[?Key==\`${TESTBED_DEFAULTS.groupTagKey}\`]|[0].Value,launch:LaunchTime}`,
       "--output",
       "json",
     ]);
@@ -123,7 +126,7 @@ export async function runTestbed(
       "ec2",
       "describe-security-groups",
       "--group-names",
-      TESTBED_CLI_DEFAULTS.securityGroup,
+      TESTBED_DEFAULTS.securityGroup,
       "--query",
       "SecurityGroups[0].IpPermissions[?FromPort==`22`].IpRanges[].CidrIp",
       "--output",
@@ -136,7 +139,7 @@ export async function runTestbed(
         "ec2",
         `${verb}-security-group-ingress`,
         "--group-name",
-        TESTBED_CLI_DEFAULTS.securityGroup,
+        TESTBED_DEFAULTS.securityGroup,
         "--protocol",
         "tcp",
         "--port",
@@ -199,7 +202,7 @@ export async function runTestbed(
       "autoscaling",
       "describe-auto-scaling-groups",
       "--auto-scaling-group-names",
-      `${TESTBED_CLI_DEFAULTS.groupPrefix}${slot}`,
+      `${TESTBED_DEFAULTS.groupPrefix}-${slot}`,
       "--query",
       "AutoScalingGroups[0].[DesiredCapacity,MaxSize,MinSize]",
       "--output",
@@ -218,7 +221,7 @@ export async function runTestbed(
       "autoscaling",
       "set-desired-capacity",
       "--auto-scaling-group-name",
-      `${TESTBED_CLI_DEFAULTS.groupPrefix}${slot}`,
+      `${TESTBED_DEFAULTS.groupPrefix}-${slot}`,
       "--desired-capacity",
       String(desired),
     ]);
@@ -258,19 +261,25 @@ export async function runTestbed(
       }),
     );
 
-  // The fallback runs a preset on GitHub; the workflow takes the preset and the ref, never a command.
+  // The fallback runs a preset on GitHub; the workflow takes the preset and the ref, never a command. A repository
+  // without the workflow gets a hint and exit 75 instead of a dispatch that cannot find it.
   const dispatch = async (preset: string): Promise<number> => {
+    if (!hasTestbedFallback(request.cwd)) {
+      say(
+        `no healthy box, and this repository has no .github/workflows/${TESTBED_FALLBACK_WORKFLOW}: start a box with \`testbed scale --slot heavy\` or run from a repository that has it`,
+      );
+      return EXIT.unhealthy;
+    }
     const code = await deps.stream("gh", [
       "workflow",
       "run",
-      TESTBED_CLI_DEFAULTS.fallbackWorkflow,
+      TESTBED_FALLBACK_WORKFLOW,
       "--ref",
       request.ref ?? "",
       "-f",
       `preset=${preset}`,
     ]);
-    if (code === 0)
-      say(`no healthy box: dispatched ${TESTBED_CLI_DEFAULTS.fallbackWorkflow} (${preset})`);
+    if (code === 0) say(`no healthy box: dispatched ${TESTBED_FALLBACK_WORKFLOW} (${preset})`);
     return code;
   };
 
@@ -336,7 +345,7 @@ export async function runTestbed(
       }
       if (request.noWait) {
         say(healthy === 0 ? "no healthy testbed box" : "every testbed slot busy");
-        return { exit: healthy === 0 ? TESTBED_EXIT.unhealthy : TESTBED_EXIT.busy };
+        return { exit: healthy === 0 ? EXIT.unhealthy : EXIT.slotBusy };
       }
       if (!said) say(healthy === 0 ? "no healthy testbed box, waiting" : "every box busy, waiting");
       said = true;
@@ -360,7 +369,7 @@ export async function runTestbed(
       "--delete",
       "-e",
       `ssh -o StrictHostKeyChecking=accept-new${direct ? "" : ` -o 'ProxyCommand=${proxy(box)}'`} -i ${settings.key}`,
-      ...TESTBED_RSYNC_EXCLUDES.flatMap((pattern) => ["--exclude", pattern]),
+      ...TESTBED_DEFAULTS.rsyncExcludes.flatMap((pattern) => ["--exclude", pattern]),
       `${directory}/`,
       `${target(box)}:${path}/`,
     ]);
@@ -386,9 +395,9 @@ export async function runTestbed(
       }
       if (request.ref === undefined) throw new CliUsageError("--preset needs --ref <ref>");
     }
-    // ci-box and this command exist only on the Mac: a nested call waits forever on the box holding its lock.
+    // testbed and ci-box exist only on the Mac: a nested call waits forever on the box holding its lock.
     if (refusesTestbedCommand(command)) {
-      say("the command must not call ci-box or stackra testbed; run it from the Mac instead");
+      say("the command must not call testbed or ci-box; run it from the Mac instead");
       return { code: 2, waitSeconds: 0, runSeconds: 0 };
     }
     const slot = request.onDemand ? "heavy" : classifyTestbedCommand(command);
@@ -421,7 +430,7 @@ export async function runTestbed(
         say(`box ${got.number} (${box.region})${slot === "light" ? " (light slot)" : ""}`);
         const id = jobId(attempt);
         const synced = await prepareAndSync(box, id, project, directory);
-        if (synced.code === TESTBED_EXIT.unhealthy) {
+        if (synced.code === EXIT.unhealthy) {
           skip.add(box.id);
           continue;
         }
@@ -430,11 +439,11 @@ export async function runTestbed(
           box,
           `testbed-agent job run ${quote(id)} ${slot} ${quote(who)} ${quote(project)} -- ${quote(command)}`,
         );
-        if (code === TESTBED_EXIT.unhealthy) {
+        if (code === EXIT.unhealthy) {
           skip.add(box.id);
           continue;
         }
-        if (code === TESTBED_EXIT.busy) {
+        if (code === EXIT.slotBusy) {
           await deps.sleep(1000);
           continue;
         }
@@ -573,7 +582,7 @@ export async function runTestbed(
         "ssm",
         "get-parameter",
         "--name",
-        TESTBED_CLI_DEFAULTS.imageParameter,
+        TESTBED_DEFAULTS.amiParameter,
         "--query",
         "Parameter.[Value,LastModifiedDate]",
         "--output",
@@ -581,7 +590,7 @@ export async function runTestbed(
       ]);
       const [image, modified] = out.stdout.trim().split(/\s+/);
       if (out.code !== 0 || image === undefined) {
-        say(`cannot read ${TESTBED_CLI_DEFAULTS.imageParameter}`);
+        say(`cannot read ${TESTBED_DEFAULTS.amiParameter}`);
         return 1;
       }
       const at =

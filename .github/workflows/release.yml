@@ -1,0 +1,72 @@
+# Testbed file contract:
+# Purpose: the Release workflow. On a push to main with pending changesets it opens or updates the "version packages"
+#          PR; when that PR merges it publishes `@figentra/testbed` to the registry at https://npm.stackra.figentra.com/
+#          with provenance, a tag and a GitHub release, then the signed SBOM and checksums. All of it is figentra/stackra's
+#          Runway npm provider, called at a pinned commit, not copied.
+# Boundary: publishes only to https://npm.stackra.figentra.com/ (ADR 0453), never npmjs. An agent never dispatches it.
+#           The `release` environment is restricted to main, and the owner's merge of the version PR is the control.
+# Runtime: GitHub Actions
+# Secrets: no registry token exists. Per package, the provider exchanges this job's GitHub ID token at the registry
+#          for a publish token bound to that one name; the registry's trusted-publisher row names this caller
+#          (figentra/testbed, `.github/workflows/release.yml`, `refs/heads/main`, environment `release`). The GitHub
+#          App id and key the version PR is pushed with are repository secrets the owner sets.
+# Governing contract: ADR 0453 (decisions 6, 7), ADR 0500, ADR 0522 (all in figentra/stackra); STA-2073.
+# Owner: release-operations
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run `pnpm -r publish --dry-run` (no version PR, no publish) in the release environment"
+        type: boolean
+        default: false
+
+# One release run per ref at a time: a second run would version the same changesets twice.
+concurrency: release-${{ github.ref }}
+
+permissions: {}
+
+jobs:
+  # Until the owner has set the bot App's secrets (and the registry's trusted-publisher row), the release is skipped
+  # with a notice instead of failing red on every push to main. Only whether each secret is set is read, never a value.
+  ready:
+    name: Release setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - id: check
+        env:
+          HAS_APP_ID: ${{ secrets.STACKRA_BOT_APP_ID != '' }}
+          HAS_PRIVATE_KEY: ${{ secrets.STACKRA_BOT_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_APP_ID" = true ] && [ "$HAS_PRIVATE_KEY" = true ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Release skipped::STACKRA_BOT_APP_ID and STACKRA_BOT_PRIVATE_KEY are not both set on figentra/testbed; the owner's setup (the release environment, the bot secrets, and Deploy registry once its figentra/testbed publisher row lands) comes first"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Release
+    needs: ready
+    if: needs.ready.outputs.ok == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    # figentra/stackra's Runway npm provider at the commit figentra/flow pins. Bump the SHA deliberately, never to a branch.
+    uses: figentra/stackra/.github/workflows/runway-npm.yml@31faaac481d2bed76bfe5f20976da1d40aa6a345
+    with:
+      environment: release
+      build-args: --filter=@figentra/testbed
+      dry-run: ${{ inputs.dry_run == true }}
+      registry: https://npm.stackra.figentra.com/
+    secrets:
+      app-id: ${{ secrets.STACKRA_BOT_APP_ID }}
+      app-private-key: ${{ secrets.STACKRA_BOT_PRIVATE_KEY }}

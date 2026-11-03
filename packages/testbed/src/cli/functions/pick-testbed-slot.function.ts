@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `pickTestbedSlot(regions, state)`, where a job of one slot kind goes next: a free slot on a healthy box in
  *          region order; else the first region whose group of that kind may be raised (a group at 0 at once, a group
  *          with a healthy box only after every slot stayed busy two minutes, below its maximum); else wait. A heavy
@@ -8,10 +8,10 @@
  * Runtime: node
  * Governing contract: ADR 0484 (the testbed); the testbed regions contract (STA-2042 FR-005, FR-006).
  */
-import { orderTestbedBoxes } from "#node/functions/order-testbed-boxes.function";
-import { shouldScaleTestbed } from "#node/functions/should-scale-testbed.function";
-import type { TestbedRegionState } from "#node/types/testbed-region-state.type";
-import type { TestbedSlotPick } from "#node/types/testbed-slot-pick.type";
+import { orderTestbedBoxes } from "#cli/functions/order-testbed-boxes.function";
+import { shouldScaleTestbed } from "#cli/functions/should-scale-testbed.function";
+import type { TestbedRegionState } from "#cli/types/testbed-region-state.type";
+import type { TestbedSlotPick } from "#cli/types/testbed-slot-pick.type";
 
 /**
  * The next step for a job.

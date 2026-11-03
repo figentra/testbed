@@ -1,9 +1,9 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `releaseTestbedClaim(root, name)`, drops the Mac-side claim `<root>/<name>`.
  * Boundary: touches only the claim folder.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
 import { rmSync } from "node:fs";
 import { join } from "node:path";

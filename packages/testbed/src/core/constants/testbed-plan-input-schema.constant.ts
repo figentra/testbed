@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TESTBED_PLAN_INPUT_SCHEMA`, the zod schema of the few inputs `testbedPlan` takes: region, group counts,
  *          the region's vCPU quotas and the two Infisical ids. Every field is optional; the plan fills the owner's answers of 2026-10-30.
  * Boundary: a schema only; pure and Pulumi-free. The ids are ids, never secrets.

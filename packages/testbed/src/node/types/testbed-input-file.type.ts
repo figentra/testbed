@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `TestbedInputFile`, one file the program uploads: the S3 key under `build/` and where it is read from.
  * Boundary: a type only.
  * Runtime: node

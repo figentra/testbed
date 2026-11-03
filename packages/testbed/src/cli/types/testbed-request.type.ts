@@ -1,14 +1,14 @@
 /**
- * Stackra file contract:
- * Purpose: `TestbedRequest`, one parsed `stackra testbed` command line: the verb, its arguments, the flags and the
+ * Testbed file contract:
+ * Purpose: `TestbedRequest`, one parsed `testbed` command line: the verb, its arguments, the flags and the
  *          connection settings.
  * Boundary: type only; the command builds it and `runTestbed` runs it.
  * Runtime: node
- * Governing contract: ADR 0484 (the testbed); ADR 0282 (decision 3).
+ * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
  */
-import type { TestbedSettings } from "#node/types/testbed-settings.type";
+import type { TestbedSettings } from "#cli/types/testbed-settings.type";
 
-/** One `stackra testbed <verb>` call. */
+/** One `testbed <verb>` call. */
 export type TestbedRequest = {
   /** `run`, `status`, `unlock`, `ip`, `ssh`, `sync`, `scale` or `image`. */
   readonly verb: string;

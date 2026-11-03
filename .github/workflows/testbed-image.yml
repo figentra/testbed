@@ -1,10 +1,12 @@
-# Stackra file contract:
-# Purpose: proves a testbed image change on its pull request, before the owner spends an image build on it (STA-1953):
-#          builds the job image from images/job/Dockerfile at its pinned defaults, runs the `testbed-images` component's
-#          own validate commands against it, and warms a pnpm store from the four files WarmStore uploads with no
-#          environment, then fetches offline from it, as the image's validate phase does. Advisory, never a required
-#          check (ADR 0166 CI2).
-# Secrets: none. Like the image build instance, the job has no token.
+# Testbed file contract:
+# Purpose: proves a testbed image change before the owner spends an image build on it (STA-1953): builds the job image
+#          from images/job/Dockerfile at its pinned defaults, runs the `testbed-images` component's own validate
+#          commands against it, and warms a pnpm store, with no environment, from the four install files WarmStore
+#          uploads, read from a sparse checkout of figentra/stackra at main, then fetches offline from it, as the
+#          image's validate phase does. It also runs the package tests with CORE_CHECKOUT set, so the toolchain pins
+#          are checked against core's mise.toml and catalogue. Daily as well as on pull requests, because core's
+#          lockfile and pins move without a change here. Advisory, never a required check (ADR 0166 CI2).
+# Secrets: none. Like the image build instance, the job has no token; the figentra/stackra checkout is public.
 # Owner: release-operations
 
 name: Testbed image
@@ -12,13 +14,12 @@ name: Testbed image
 on:
   pull_request:
     paths:
-      - packages/infrastructure/infra-testbed/images/**
-      - packages/infrastructure/infra-testbed/src/core/constants/toolchain-pins.constant.ts
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .pnpmfile.mjs
-      - .npmrc
+      - packages/testbed/images/**
+      - packages/testbed/src/core/constants/toolchain-pins.constant.ts
       - .github/workflows/testbed-image.yml
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
 
 concurrency:
   group: testbed-image-${{ github.ref }}
@@ -33,15 +34,34 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+    env:
+      CORE_CHECKOUT: ${{ github.workspace }}/core
     defaults:
       run:
-        working-directory: packages/infrastructure/infra-testbed
+        working-directory: packages/testbed
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: false
+
+      # The four files WarmStore uploads, plus core's mise.toml for the pin test; nothing else.
+      - name: Checkout figentra/stackra install files
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: figentra/stackra
+          ref: main
+          path: core
+          persist-credentials: false
+          submodules: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /pnpm-lock.yaml
+            /pnpm-workspace.yaml
+            /.pnpmfile.mjs
+            /.npmrc
+            /mise.toml
 
       - name: Toolchain (mise)
         uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
@@ -52,6 +72,13 @@ jobs:
       - name: Disk
         working-directory: /
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Pins equal core
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "::notice title=Core install files::figentra/stackra at $(git -C core rev-parse HEAD)"
+          pnpm install --frozen-lockfile
+          pnpm --filter @figentra/testbed test
 
       # No build context, as the `testbed-images` component builds it; the ARG defaults equal TOOLCHAIN_PINS (a unit
       # test keeps them so).
@@ -73,14 +100,19 @@ jobs:
           bash "$RUNNER_TEMP/validate.sh"
 
       # WarmStore and its offline check (03-agent.yml), from a shell with no environment: the build instance has no
-      # licence token, so a fetch that ran an install script would fail here as it did there.
+      # licence token, so a fetch that ran an install script would fail here as it did there. node and pnpm are the
+      # image's own pins (the Dockerfile's ARG defaults), not this repository's.
       - name: Warm store with no environment
-        working-directory: ${{ github.workspace }}
         run: |
+          arg() { sed -n "s/^ARG $1=//p" images/job/Dockerfile; }
+          node_tool="node@$(arg NODE_VERSION)"
+          pnpm_tool="pnpm@$(arg PNPM_VERSION)"
+          mise install "$node_tool" "$pnpm_tool"
+          node_bin=$(dirname "$(mise which node --tool "$node_tool")")
+          tools="$(dirname "$(mise which pnpm --tool "$pnpm_tool")"):$node_bin:/usr/bin:/bin"
           warm=$RUNNER_TEMP/warm
           mkdir -p "$warm" "$RUNNER_TEMP/home"
-          cp pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.mjs .npmrc "$warm/"
-          tools="$(dirname "$(mise which pnpm)"):$(dirname "$(mise which node)"):/usr/bin:/bin"
+          cp "$CORE_CHECKOUT"/{pnpm-lock.yaml,pnpm-workspace.yaml,.pnpmfile.mjs,.npmrc} "$warm/"
           cd "$warm"
           env -i PATH="$tools" HOME="$RUNNER_TEMP/home" pnpm fetch --ignore-scripts --store-dir "$RUNNER_TEMP/store"
           rm -rf node_modules

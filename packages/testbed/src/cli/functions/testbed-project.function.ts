@@ -1,5 +1,5 @@
 /**
- * Stackra file contract:
+ * Testbed file contract:
  * Purpose: `testbedProject(directory)`, the project name a testbed job runs under: the repository's folder name,
  *          also for a git worktree (`core/.claude/worktrees/x` is `core`), so worktrees share one seed on the box and
  *          match the box's secret grants. Falls back to the directory's own name outside git.
