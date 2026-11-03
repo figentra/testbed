@@ -285,6 +285,8 @@ describe("awsTestbed", () => {
     const fetches = agent.match(/pnpm fetch [^\n]*/g) ?? [];
     expect(fetches).toHaveLength(2);
     for (const fetch of fetches) expect(fetch).toContain("--ignore-scripts");
+    // The metadata cache lives on /data, which Clean keeps: an offline install needs it (image 1.224117217.0).
+    expect(agent.match(/PNPM_CONFIG_CACHE_DIR=\/data\/pnpm-cache/g)).toHaveLength(2);
   });
 });
 

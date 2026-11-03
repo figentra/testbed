@@ -1,7 +1,7 @@
 # Testbed file contract:
 # Purpose: the Quality Gate, the one required check on every pull request and push to main: workflow lint (actionlint,
-#          zizmor), install, format check, lint, typecheck, test and build. Branch protection requires the
-#          `Quality Gate` job by name; never rename it.
+#          zizmor), install, format check, lint, typecheck and build. Tests run on the box, not on GitHub (STA-2064, as
+#          in figentra/stackra). Branch protection requires the `Quality Gate` job by name; never rename it.
 # Owner: release-operations
 # Secrets: none. The @stackra presets come from the registry's open scope, which needs no token; zizmor reads the
 #          action SHAs with the read-only job token.
@@ -62,9 +62,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
 
       - name: Build
         run: pnpm build

@@ -23,6 +23,8 @@ INFISICAL_DOMAIN=${INFISICAL_DOMAIN:-https://eu.infisical.com}
 export INFISICAL_DOMAIN
 PG_IMAGE=${TESTBED_POSTGRES_IMAGE:-postgres:17.6-alpine}
 STORE=${TESTBED_STORE:-$DATA/pnpm-store}
+# pnpm's metadata cache: the release-age check reads it even for a lockfile install (the image warms it beside the store).
+PNPM_CACHE=${TESTBED_PNPM_CACHE:-$DATA/pnpm-cache}
 CLEAN_PCT=${TESTBED_CLEAN_PCT:-70}
 DRAIN_PCT=${TESTBED_DRAIN_PCT:-85}
 ROOT_MIN_GB=${TESTBED_ROOT_MIN_FREE_GB:-10}
@@ -404,10 +406,11 @@ EOF
   [ ! -f "$JOB_WS/services/encore.app" ] \
     || sed -i -E 's/"id":[[:space:]]*"[^"]*"/"id": ""/' "$JOB_WS/services/encore.app" || true
 
-  # One writer to the shared store; the job then installs offline against it read-only. The fetch only fills the
-  # store, from a copy of the files it reads: run in the workspace it would leave a node_modules that makes the
-  # container skip its install, and load the job's mise.toml on the host. No scripts: the container's install runs them.
-  mkdir -p "$STORE" "$DATA/turbo-cache"
+  # The fetch fills the shared store before the job, from a copy of the files it reads: run in the workspace it would
+  # leave a node_modules that makes the container skip its install, and load the job's mise.toml on the host. No
+  # scripts: the container's install runs them.
+  mkdir -p "$STORE" "$PNPM_CACHE" "$DATA/turbo-cache"
+  export PNPM_CONFIG_CACHE_DIR="$PNPM_CACHE"
   if [ -f "$JOB_WS/pnpm-lock.yaml" ]; then
     wrap "pnpm fetch --ignore-scripts --store-dir $(sq "$STORE")" || {
       say "unhealthy: grants"
@@ -437,15 +440,20 @@ EOF
     done
   fi
 
-  inner="cd /work && { [ -d node_modules ] || pnpm install --offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy; } && {$NL$command_text$NL}"
+  # Prefer offline, not offline only: a package or metadata entry the store lacks is fetched instead of failing the job.
+  # The store is mounted writable for that (pnpm's store is made for concurrent installs); testbed-image.yml reports
+  # whether a read-only mount could serve an install at all. Integrity checks stay on, so a file one job left changed
+  # in the shared store fails the next job's install against the lockfile's hashes.
+  inner="cd /work && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy; } && {$NL$command_text$NL}"
   wrap "sh -c $(sq "$inner")" || {
     say "unhealthy: grants"
     exit 75
   }
   set -- --rm --init --name "tb-$JOB_ID" --label "$LABEL=$JOB_ID" --network "tb-$JOB_ID" \
-    -v "$JOB_WS:/work" -v "$STORE:/pnpm-store:ro" -v "$DATA/turbo-cache:/turbo-cache" \
+    -v "$JOB_WS:/work" -v "$STORE:/pnpm-store" -v "$PNPM_CACHE:/pnpm-cache" -v "$DATA/turbo-cache:/turbo-cache" \
     -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)" \
-    -e TURBO_CACHE_DIR=/turbo-cache -e CI=true -e "TESTBED_JOB=$JOB_ID"
+    -e TURBO_CACHE_DIR=/turbo-cache -e PNPM_CONFIG_CACHE_DIR=/pnpm-cache -e PNPM_CONFIG_VERIFY_STORE_INTEGRITY=true \
+    -e CI=true -e "TESTBED_JOB=$JOB_ID"
   [ "$postgres" = 0 ] || set -- "$@" -e "TESTBED_POSTGRES_HOST=tb-$JOB_ID-pg"
   [ -z "${INFISICAL_TOKEN:-}" ] || set -- "$@" -e INFISICAL_TOKEN -e INFISICAL_DOMAIN
   JOB_RAN=1

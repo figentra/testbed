@@ -41,11 +41,14 @@ phases:
               done
               cd /tmp/warm
               export MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml
+              # The release-age check reads each package's metadata even from a lockfile, so an offline install needs
+              # pnpm's metadata cache too: it lives on /data beside the store, where Clean keeps it and jobs mount it.
+              export PNPM_CONFIG_CACHE_DIR=/data/pnpm-cache
               # A failed fetch fails the build: an image with an empty store downloads every package on each new box.
               # No scripts: filling the store needs none, and licence-gated postinstalls (uniwind-pro) fail without a
               # job's tokens; each job's own install runs them.
               PATH=/opt/mise/shims:$PATH pnpm fetch --ignore-scripts --store-dir /data/pnpm-store
-              chown -R ubuntu:ubuntu /data/pnpm-store
+              chown -R ubuntu:ubuntu /data/pnpm-store /data/pnpm-cache
               rm -rf /tmp/warm
       - name: Clean
         action: ExecuteBash
@@ -66,8 +69,10 @@ phases:
               set -eu
               /usr/local/bin/testbed-agent slot heavy | grep -qx free
               systemctl is-enabled testbed-guard.timer testbed-idle.timer
-              # The warm store holds every package the lockfile names: an offline fetch from it must succeed.
+              # The warm store and metadata cache hold every package the lockfile names: an offline fetch must succeed
+              # (Clean has emptied every home cache by now, as on a new box).
               rm -rf /tmp/warmcheck && cp -r /etc/testbed/warm /tmp/warmcheck && cd /tmp/warmcheck
               MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml PATH=/opt/mise/shims:$PATH \
-                pnpm fetch --offline --ignore-scripts --store-dir /data/pnpm-store >/dev/null
+                PNPM_CONFIG_CACHE_DIR=/data/pnpm-cache pnpm fetch --offline --ignore-scripts --store-dir /data/pnpm-store >/dev/null
               cd / && rm -rf /tmp/warmcheck
+              chown -R ubuntu:ubuntu /data/pnpm-store /data/pnpm-cache

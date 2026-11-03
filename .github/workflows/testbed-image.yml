@@ -1,11 +1,12 @@
 # Testbed file contract:
 # Purpose: proves a testbed image change before the owner spends an image build on it (STA-1953): builds the job image
 #          from images/job/Dockerfile at its pinned defaults, runs the `testbed-images` component's own validate
-#          commands against it, and warms a pnpm store, with no environment, from the four install files WarmStore
-#          uploads, read from a sparse checkout of figentra/stackra at main, then fetches offline from it, as the
-#          image's validate phase does. It also runs the package tests with CORE_CHECKOUT set, so the toolchain pins
-#          are checked against core's mise.toml and catalogue. Daily as well as on pull requests, because core's
-#          lockfile and pins move without a change here. Advisory, never a required check (ADR 0166 CI2).
+#          commands against it, warms a pnpm store with no environment from the four install files WarmStore uploads
+#          (read from a shallow checkout of figentra/stackra at main), empties the home cache as Clean does, fetches
+#          offline from the store and its metadata cache as the image's validate phase does, and runs a job's install
+#          in the job image against that store. Daily as well as on pull requests, because core's lockfile moves
+#          without a change here. Tests run on the box, not here (STA-2064). Advisory, never a required check (ADR 0166
+#          CI2).
 # Secrets: none. Like the image build instance, the job has no token; the figentra/stackra checkout is public.
 # Owner: release-operations
 
@@ -46,8 +47,8 @@ jobs:
           persist-credentials: false
           submodules: false
 
-      # The four files WarmStore uploads, plus core's mise.toml for the pin test; nothing else.
-      - name: Checkout figentra/stackra install files
+      # The whole of core, shallow: WarmStore's four install files, and every workspace manifest a job's install reads.
+      - name: Checkout figentra/stackra
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: figentra/stackra
@@ -55,13 +56,6 @@ jobs:
           path: core
           persist-credentials: false
           submodules: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /pnpm-lock.yaml
-            /pnpm-workspace.yaml
-            /.pnpmfile.mjs
-            /.npmrc
-            /mise.toml
 
       - name: Toolchain (mise)
         uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
@@ -73,12 +67,8 @@ jobs:
         working-directory: /
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
 
-      - name: Pins equal core
-        working-directory: ${{ github.workspace }}
-        run: |
-          echo "::notice title=Core install files::figentra/stackra at $(git -C core rev-parse HEAD)"
-          pnpm install --frozen-lockfile
-          pnpm --filter @figentra/testbed test
+      - name: Core commit
+        run: echo "::notice title=Core install files::figentra/stackra at $(git -C "$CORE_CHECKOUT" rev-parse HEAD)"
 
       # No build context, as the `testbed-images` component builds it; the ARG defaults equal TOOLCHAIN_PINS (a unit
       # test keeps them so).
@@ -99,9 +89,10 @@ jobs:
           if grep -n '@@' "$RUNNER_TEMP/validate.sh"; then echo "::error::an unfilled placeholder"; exit 1; fi
           bash "$RUNNER_TEMP/validate.sh"
 
-      # WarmStore and its offline check (03-agent.yml), from a shell with no environment: the build instance has no
-      # licence token, so a fetch that ran an install script would fail here as it did there. node and pnpm are the
-      # image's own pins (the Dockerfile's ARG defaults), not this repository's.
+      # WarmStore, Clean and the offline check (03-agent.yml), from a shell with no environment: the build instance has
+      # no licence token, so a fetch that ran an install script would fail here as it did there, and Clean empties every
+      # home cache, so the offline check reads only the store and the metadata cache. node and pnpm are the image's own
+      # pins (the Dockerfile's ARG defaults), not this repository's.
       - name: Warm store with no environment
         run: |
           arg() { sed -n "s/^ARG $1=//p" images/job/Dockerfile; }
@@ -114,7 +105,29 @@ jobs:
           mkdir -p "$warm" "$RUNNER_TEMP/home"
           cp "$CORE_CHECKOUT"/{pnpm-lock.yaml,pnpm-workspace.yaml,.pnpmfile.mjs,.npmrc} "$warm/"
           cd "$warm"
-          env -i PATH="$tools" HOME="$RUNNER_TEMP/home" pnpm fetch --ignore-scripts --store-dir "$RUNNER_TEMP/store"
-          rm -rf node_modules
-          env -i PATH="$tools" HOME="$RUNNER_TEMP/home" \
+          env -i PATH="$tools" HOME="$RUNNER_TEMP/home" PNPM_CONFIG_CACHE_DIR="$RUNNER_TEMP/cache" \
+            pnpm fetch --ignore-scripts --store-dir "$RUNNER_TEMP/store"
+          rm -rf node_modules "${RUNNER_TEMP:?}/home"
+          mkdir -p "$RUNNER_TEMP/home"
+          env -i PATH="$tools" HOME="$RUNNER_TEMP/home" PNPM_CONFIG_CACHE_DIR="$RUNNER_TEMP/cache" \
             pnpm fetch --offline --ignore-scripts --store-dir "$RUNNER_TEMP/store" >/dev/null
+
+      # A job's install as the box agent runs it: in the job image, with the warm store and the metadata cache beside
+      # it. Offline here, so a package the store lacks fails the check; scripts are skipped (no licence token). The
+      # read-only attempt only reports: it shows whether pnpm can serve an install from a read-only store mount.
+      - name: Job install from the warm store
+        working-directory: ${{ github.workspace }}/core
+        run: |
+          install() {
+            docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e CI=true -e PNPM_CONFIG_CACHE_DIR=/pnpm-cache \
+              -e PNPM_CONFIG_VERIFY_STORE_INTEGRITY=true \
+              -v "$PWD:/work" -v "$RUNNER_TEMP/store:/pnpm-store$1" -v "$RUNNER_TEMP/cache:/pnpm-cache" \
+              stackra-testbed-job:current sh -euc 'cd /work
+                # A writable shared store is safe only while pnpm checks every file against the lockfile hashes.
+                [ "$(pnpm config get verify-store-integrity)" = true ]
+                rm -rf node_modules && pnpm install --offline --frozen-lockfile --ignore-scripts \
+                  --store-dir /pnpm-store --package-import-method clone-or-copy'
+          }
+          if install :ro; then echo "::notice title=Store::a read-only store serves an install"
+          else echo "::notice title=Store::a read-only store cannot serve an install; jobs mount it writable"; fi
+          install ""

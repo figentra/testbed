@@ -1,6 +1,6 @@
 # Testbed file contract:
-# Purpose: apply the testbed (ADR 0484, ADR 0522, STA-1626, STA-2073) with Pulumi from CI only, by hand: test and build
-#          @figentra/testbed, then `pulumi preview`, `pulumi up`, or a run of the image pipeline, against one region's
+# Purpose: apply the testbed (ADR 0484, ADR 0522, STA-1626, STA-2073) with Pulumi from CI only, by hand: build
+#          @figentra/testbed (tests run on the box, STA-2064), then `pulumi preview`, `pulumi up`, or a run of the image pipeline, against one region's
 #          stack `testbed-<region>` of packages/testbed/pulumi in the academorix AWS account (591473336656). eu-west-1
 #          is the home: its stack holds the global roles and the image pipeline, whose distribution copies each AMI to
 #          all four regions; the others hold their pool only (STA-2042). The image's install files (pnpm-lock.yaml,
@@ -138,10 +138,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test and build
-        run: |
-          pnpm --filter @figentra/testbed build
-          pnpm --filter @figentra/testbed test
+      - name: Build
+        run: pnpm --filter @figentra/testbed build
 
       - name: AWS (GitHub OIDC)
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
