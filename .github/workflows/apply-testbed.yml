@@ -79,6 +79,8 @@ jobs:
       SSH_CIDRS: ${{ vars.TESTBED_SSH_CIDRS }}
       IDENTITY_ID: ${{ vars.INFISICAL_GATE_IDENTITY_ID }}
       PROJECT_ID: ${{ vars.INFISICAL_GATE_PROJECT_ID }}
+      # Optional: the permissions boundary the program sets on the roles it creates (notes testbed-boundary draft).
+      PERMISSIONS_BOUNDARY: ${{ vars.TESTBED_PERMISSIONS_BOUNDARY_ARN }}
       STATE_BUCKET: stackra-pulumi-state-591473336656
       PULUMI_TOOL: pulumi@3.268.0
       PULUMI_SKIP_UPDATE_CHECK: "true"
@@ -189,6 +191,7 @@ jobs:
             i=$((i + 1))
           done
           pulumi config set groups "$DECLARE_GROUPS"
+          if [ -n "$PERMISSIONS_BOUNDARY" ]; then pulumi config set permissionsBoundary "$PERMISSIONS_BOUNDARY"; fi
           pulumi config set heavyMin "$HEAVY_MIN"
           pulumi config set lightMin "$LIGHT_MIN"
           # Image Builder components and recipes are kept in AWS when replaced (retainOnDelete, STA-1953). The engine

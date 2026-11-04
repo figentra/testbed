@@ -58,10 +58,13 @@ testbed run "<session> <what>" <project-dir> "<command>"
 The command looks at every enabled region and takes a free slot of the right kind, in region order. When there is none,
 it starts a box in the first region with room, and otherwise waits. It syncs the directory; only the diff is uploaded,
 because the box clones its last copy of the project first. Then it runs the command in a fresh container and returns
-its exit code.
+its exit code. The job runs detached on the box and the CLI follows its log: when the SSH-over-SSM connection drops
+(seen once as "Bad packet length ... Connection corrupted" after 23 minutes), the job keeps running, the CLI reattaches
+up to three times, 10 s apart, and exits with the job's code. Ctrl-C stops the job on the box.
 
 The enabled regions are `TESTBED_DEFAULTS.enabledRegions` in
-`packages/testbed/src/core/constants/testbed-defaults.constant.ts`, a list that grows by one line as each region joins.
+`packages/testbed/src/core/constants/testbed-defaults.constant.ts`: eu-west-1, eu-west-2 and eu-central-1 (a region
+whose groups do not exist yet is skipped). us-east-1 joins once box 1 stops.
 `--regions a,b` or `STACKRA_TESTBED_REGIONS` overrides it for one machine, and `--region r` narrows it to one region.
 The other verbs:
 

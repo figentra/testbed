@@ -7,7 +7,8 @@
  *           sparse checkout of figentra/stackra, with `pnpm-workspace.yaml`, `.pnpmfile.mjs` and `.npmrc` beside it;
  *           absolute, or relative to this folder), `sshCidrs` (optional: the `--ssh-direct` fallback's port-22
  *           allowlist; absent, no inbound rule and SSM only), `groups` (false for the first apply, before the first AMI
- *           exists), `heavyMin` and `lightMin`.
+ *           exists), `heavyMin`, `lightMin` and `permissionsBoundary` (optional: the boundary ARN set on the roles it
+ *           creates).
  *           Imports the built package by its own name, so the package must be built first.
  * Runtime: node (Pulumi CLI)
  * Governing contract: ADR 0484; ADR 0171 (decisions 4 and 6).
@@ -35,4 +36,5 @@ export const testbed = awsTestbed(plan, {
   // No fallback: the image hash covers these bytes, so a guessed path would build a different image.
   lockfilePath: resolve(config.require("lockfilePath")),
   groups: config.getBoolean("groups") ?? true,
+  permissionsBoundary: config.get("permissionsBoundary"),
 });

@@ -1,7 +1,7 @@
 /**
  * Testbed file contract:
  * Purpose: `createTestbedDeps(cwd, io)`, the real `TestbedDeps`: processes through `runCaptured` and `runProcess` (no
- *          shell), this Mac's public IP from checkip.amazonaws.com, and the claim folder `/tmp/ci-claim`.
+ *          shell), this Mac's public IP from checkip.amazonaws.com, the claim folder `/tmp/ci-claim` and SIGINT/SIGTERM.
  * Boundary: the only place `testbed` touches the clock, the network and process liveness.
  * Runtime: node
  * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
@@ -50,5 +50,14 @@ export function createTestbedDeps(cwd: string, io: CliIo): TestbedDeps {
       }
     },
     claimRoot: "/tmp/ci-claim",
+    onInterrupt: (handler) => {
+      const on = (): void => handler();
+      process.once("SIGINT", on);
+      process.once("SIGTERM", on);
+      return () => {
+        process.off("SIGINT", on);
+        process.off("SIGTERM", on);
+      };
+    },
   };
 }

@@ -32,4 +32,7 @@ export type TestbedDeps = {
 
   /** The folder of the Mac-side claims. */
   readonly claimRoot: string;
+
+  /** Calls `handler` once on SIGINT or SIGTERM; the returned function removes it. */
+  readonly onInterrupt: (handler: () => void) => () => void;
 };

@@ -39,7 +39,7 @@ describe("resolveTestbedSettings", () => {
     expect(resolveTestbedSettings({}, {}, "/h")).toEqual({
       profile: "academorix",
       region: "eu-west-1",
-      regions: ["eu-west-1"],
+      regions: ["eu-west-1", "eu-west-2", "eu-central-1"],
       key: "/h/.ssh/academorix-ci.pem",
       user: "ubuntu",
       sshDirect: false,
@@ -56,7 +56,11 @@ describe("resolveTestbedSettings", () => {
     const fromEnv = resolveTestbedSettings({}, env, "/h");
     expect(fromEnv.regions).toEqual(["eu-west-2", "eu-central-1"]);
     expect(fromEnv.region).toBe("eu-west-2");
-    expect(resolveTestbedSettings({ regions: "," }, {}, "/h").regions).toEqual(["eu-west-1"]);
+    expect(resolveTestbedSettings({ regions: "," }, {}, "/h").regions).toEqual([
+      "eu-west-1",
+      "eu-west-2",
+      "eu-central-1",
+    ]);
   });
 
   // @covers sta-2042:FR-006 sta-2042:AC-005

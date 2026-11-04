@@ -82,7 +82,7 @@ pin test.
 
 | Input                 | Pin                                                                      |
 | --------------------- | ------------------------------------------------------------------------ |
-| Base image            | `ubuntu:24.04` (tag; pin a digest after the first build)                 |
+| Base image            | `ubuntu:24.04`, pinned by digest `sha256:fe815609…` (2026-11-04)         |
 | Node, pnpm, Infisical | core's `mise.toml` values, through `TOOLCHAIN_PINS`                      |
 | Playwright            | core's `pnpm-workspace.yaml` catalogue value: Chromium, Firefox, WebKit  |
 | mise                  | `TOOLCHAIN_PINS.mise` (confirm against the mise releases on first build) |

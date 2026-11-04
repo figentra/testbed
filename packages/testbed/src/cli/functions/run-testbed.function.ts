@@ -2,14 +2,15 @@
  * Testbed file contract:
  * Purpose: `runTestbed(request, deps, io)`, every `testbed` verb: `run` (look at every enabled region, pick a
  *          free slot or a group to raise with `pickTestbedSlot`, claim it, prepare the job directory, rsync into it,
- *          run the command under the box's lock, retry on exit 75, 73 and a lost light box, dispatch the GitHub
+ *          run the command detached under the box's lock and follow its log (reattaching after a dropped connection),
+ *          retry on exit 75, 73 and a lost light box, dispatch the GitHub
  *          fallback when the caller's repository has its workflow; `--json` prints one result line), `status`
  *          (every region, also `--json`), `unlock`, `ip`, `ssh`, `sync`, `scale` and `image`. It replaces the Mac
  *          script `ci-box`. A box is reached by SSH through SSM
  *          Session Manager (`ProxyCommand`, `AWS-StartSSHSession`, the instance id), so the security group needs no
  *          inbound rule; `--ssh-direct` reaches the public IP and swaps this machine's address into the allowlist.
  *          Every box carries its region, and the SSM proxy and each `aws` call for it use that region.
- * Boundary: starts only `aws`, `ssh`, `rsync` and `gh`, through `deps`, without a shell; the only text a box shell
+ * Boundary: starts only `aws`, `ssh`, `rsync` and `gh`, through `deps`, without a shell; every caller word a box shell
  *           sees is single-quoted. It calls `aws` only in an enabled region (`settings.regions`). It never reads,
  *           prints or passes a secret value (the key is a file path), and it never runs a job on the Mac. The job's
  *           own output goes wherever `deps.stream` writes (the command points it at stderr under `--json`).
@@ -22,6 +23,8 @@ import { resolve } from "node:path";
 import { TESTBED_FALLBACK_WORKFLOW } from "#cli/constants/testbed-fallback-workflow.constant";
 import { TESTBED_POLL_MS } from "#cli/constants/testbed-poll-ms.constant";
 import { TESTBED_PRESETS } from "#cli/constants/testbed-presets.constant";
+import { TESTBED_REATTACH_MS } from "#cli/constants/testbed-reattach-ms.constant";
+import { TESTBED_REATTACH_TRIES } from "#cli/constants/testbed-reattach-tries.constant";
 import { CliUsageError } from "#cli/errors/cli-usage.error";
 import { claimTestbedSlot } from "#cli/functions/claim-testbed-slot.function";
 import { classifyTestbedCommand } from "#cli/functions/classify-testbed-command.function";
@@ -166,6 +169,11 @@ export async function runTestbed(
     "StrictHostKeyChecking=accept-new",
     "-o",
     "ConnectTimeout=15",
+    // A dead SSM session is noticed in two minutes instead of hanging until the job's timeout.
+    "-o",
+    "ServerAliveInterval=30",
+    "-o",
+    "ServerAliveCountMax=4",
     ...(direct ? [] : ["-o", `ProxyCommand=${proxy(box)}`]),
     "-i",
     settings.key,
@@ -182,6 +190,53 @@ export async function runTestbed(
       target(box),
       ...(command === undefined ? [] : [command]),
     ]);
+  };
+
+  // The job runs detached on the box (its own session, HUP ignored), writing its log and exit code to files, and the
+  // Mac follows the log. A long job's SSH-over-SSM stream can break ("Bad packet length ... Connection corrupted",
+  // 2026-11-04, after 23 minutes): the job keeps running, the Mac reattaches up to TESTBED_REATTACH_TRIES times, and
+  // the exit code comes from the file. Exit 255 still means the box was lost: the job never started or never answered.
+  const runDetached = async (
+    box: TestbedBox,
+    id: string,
+    slot: string,
+    agent: string,
+  ): Promise<number> => {
+    const f = `/tmp/testbed-${id}`;
+    const start =
+      `f=${f}; : >>"$f.log"; setsid nohup sh -c '"$@" >>"$0.log" 2>&1; echo $? >"$0.rc"' "$f" ${agent}` +
+      ` </dev/null >/dev/null 2>&1 & echo $! >"$f.pid"`;
+    // Waits for the job's pid (30 s, then 255: it never started), follows the log until the job exits, then exits with
+    // its code; no code file means the job was killed on the box.
+    const follow = (lines: string): string =>
+      `f=${f}; n=0; until [ -s "$f.pid" ]; do n=$((n+1)); [ $n -le 30 ] || exit 255; sleep 1; done; p=$(cat "$f.pid");` +
+      ` tail -n ${lines} -f --pid="$p" "$f.log"; while kill -0 "$p" 2>/dev/null; do sleep 1; done;` +
+      ` [ -s "$f.rc" ] || { echo "testbed job ended without an exit code" >&2; exit 1; };` +
+      ` rc=$(cat "$f.rc"); rm -f "$f.log" "$f.rc" "$f.pid"; exit "$rc"`;
+    // Ctrl-C or a caller's SIGTERM stops the job on the box, as closing the old attached session did.
+    const stop: { done?: Promise<ToolOutput> } = {};
+    const off = deps.onInterrupt(() => {
+      stop.done ??= remote(box, `f=${f}; [ -e "$f.rc" ] || testbed-agent job stop ${slot}`);
+    });
+    try {
+      let code = await remoteStream(box, `${start}; ${follow("+1")}`);
+      for (
+        let tries = 0;
+        code === 255 && stop.done === undefined && tries < TESTBED_REATTACH_TRIES;
+        tries += 1
+      ) {
+        say(
+          `lost the connection to ${box.id} (${box.region}); the job keeps running there, reattaching`,
+        );
+        await deps.sleep(TESTBED_REATTACH_MS);
+        code = await remoteStream(box, follow("50"));
+      }
+      if (stop.done === undefined) return code;
+      await stop.done;
+      return 130;
+    } finally {
+      off();
+    }
   };
 
   const pickBox = async (): Promise<TestbedBox | undefined> => {
@@ -435,9 +490,11 @@ export async function runTestbed(
           continue;
         }
         if (synced.code !== 0) return done(synced.code);
-        const code = await remoteStream(
+        const code = await runDetached(
           box,
-          `testbed-agent job run ${quote(id)} ${slot} ${quote(who)} ${quote(project)} -- ${quote(command)}`,
+          id,
+          slot,
+          `testbed-agent job run ${quote(id)} ${slot} ${quote(who)} ${quote(project)}${request.postgres ? " --postgres" : ""} -- ${quote(command)}`,
         );
         if (code === EXIT.unhealthy) {
           skip.add(box.id);

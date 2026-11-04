@@ -9,8 +9,8 @@
 #           it on the Mac; CI and the image pipeline do.
 # Runtime: container (linux/amd64)
 # Governing contract: ADR 0484 (decision 2); ADR 0019 (exact pins); ADR 0174 (supply chain); ADR 0173.
-# shortcut: the base is a tag, not a digest; pin the digest once the first image build has run and a digest can be read.
-FROM ubuntu:24.04
+# The base is pinned by its multi-arch index digest (read from Docker Hub 2026-11-04); the tag is for readers only.
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 
 ARG MISE_VERSION=v2026.10.0
 ARG NODE_VERSION=24.22.0

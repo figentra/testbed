@@ -72,10 +72,28 @@ export function awsTestbed(plan: TestbedPlan, options: AwsTestbedOptions): AwsTe
     options.vpcId === undefined
       ? aws.ec2.getVpcOutput({ default: true }, { provider }).id
       : pulumi.output(options.vpcId);
+  // Only the default VPC's subnets in zones that offer the heavy type (every light override is offered there too, or
+  // the mixed-instances policy skips it): us-east-1e offers none of the three types (runbook step 16).
+  const zones = aws.ec2.getInstanceTypeOfferingsOutput(
+    {
+      locationType: "availability-zone",
+      filters: [
+        { name: "instance-type", values: [plan.groups.heavy.instanceTypes[0] ?? "c7i.2xlarge"] },
+      ],
+    },
+    { provider },
+  ).locations;
   const subnetIds: pulumi.Input<string[]> =
     options.subnetIds === undefined
-      ? aws.ec2.getSubnetsOutput({ filters: [{ name: "vpc-id", values: [vpcId] }] }, { provider })
-          .ids
+      ? aws.ec2.getSubnetsOutput(
+          {
+            filters: [
+              { name: "vpc-id", values: [vpcId] },
+              { name: "availability-zone", values: zones },
+            ],
+          },
+          { provider },
+        ).ids
       : [...options.subnetIds];
 
   // No ingress by default: the CLI reaches a box through SSM Session Manager. With `--ssh-direct` it authorises and
@@ -134,6 +152,15 @@ export function awsTestbed(plan: TestbedPlan, options: AwsTestbedOptions): AwsTe
     healthCheckGracePeriod: 300,
     newInstancesProtectedFromScaleIn: false,
     instanceRefresh: refresh,
+    // Cost backstop outside the box: Auto Scaling replaces any box older than a day (AWS's minimum), so a box whose
+    // idle pass never fires cannot bill for long; a job's own timeout is 3 hours. The in-service count is published
+    // for the CloudWatch alarm the owner sets (notes cost-backstop draft).
+    maxInstanceLifetime: 86_400,
+    metricsGranularity: "1Minute",
+    enabledMetrics: [
+      aws.autoscaling.Metric.GroupInServiceInstances,
+      aws.autoscaling.Metric.GroupDesiredCapacity,
+    ],
   };
   // The CLI and the idle pass move the desired count, so Pulumi owns the bounds and not the count.
   const groupOpts = { ...opts, ignoreChanges: ["desiredCapacity"] };
@@ -283,7 +310,12 @@ function awsTestbedHome(
   // ---- the box's role: SSM, Auto Scaling on its own groups, and the AWS identity Infisical checks ------------------
   const instanceRole = new aws.iam.Role(
     "testbed-instance",
-    { name: D.instanceProfile, assumeRolePolicy: assumedBy("ec2.amazonaws.com"), tags },
+    {
+      name: D.instanceProfile,
+      assumeRolePolicy: assumedBy("ec2.amazonaws.com"),
+      permissionsBoundary: options.permissionsBoundary,
+      tags,
+    },
     opts,
   );
   // oxlint-disable-next-line no-new -- reason: Pulumi registers a resource when it is constructed
@@ -373,6 +405,7 @@ function awsTestbedHome(
     {
       name: "stackra-testbed-image-builder",
       assumeRolePolicy: assumedBy("ec2.amazonaws.com"),
+      permissionsBoundary: options.permissionsBoundary,
       tags,
     },
     opts,

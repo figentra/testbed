@@ -58,6 +58,8 @@ function env(extra: Record<string, string> = {}): Record<string, string> {
     TESTBED_INSTANCE_ID: "i-test",
     TESTBED_AMI_ID: "ami-test",
     TESTBED_REGION: "eu-west-1",
+    // The job container has the real infisical and pnpm under /opt/mise/shims; the stubs must win there too.
+    TESTBED_MISE_SHIMS: dir("bin"),
     FAKE_LOG: log,
     FAKE_DF_DATA: "10",
     FAKE_DF_ROOT: "20",
