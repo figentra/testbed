@@ -1,6 +1,7 @@
 // Testbed file contract:
 // Purpose: TypeScript project of @figentra/testbed: extends the `library` preset of @stackra/typescript-config and
 //          sets nothing else. tsc reads tsconfig.json as JSONC, so the name stays .json.
-// `library`: plain functions, no decorators and no TSX; Node types serve `./node` (Pulumi), the CLI and the agent test.
+// `library`: no TSX; Node types serve `./node` (Pulumi), the CLI and the agent test. Its base already reads legacy
+// decorators (the CLI's @stackra/console commands), and no file needs the non-erasable syntax of `decorators`.
 // Owner: release-operations · Secrets: forbidden
 { "extends": "@stackra/typescript-config/library" }

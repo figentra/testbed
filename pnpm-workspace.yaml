@@ -1,7 +1,7 @@
 # Testbed file contract:
 # Purpose: pnpm workspace membership (one package, packages/testbed) and the version catalogs its package.json
 #          references resolve against. Versions match figentra/stackra's catalogs at beaafa27; the `stackra` catalog
-#          pins the shared presets from the Stackra registry (.npmrc).
+#          pins the shared presets and @stackra/console (with @stackra/validation) from the Stackra registry (.npmrc).
 # Owner: release-operations
 # Secrets: forbidden
 packages:
@@ -36,11 +36,15 @@ catalogs:
   infra:
     "@pulumi/aws": 7.50.0
     "@pulumi/pulumi": 3.268.0
-  # The shared presets, published from figentra/stackra to the Stackra registry (exact, never a range).
+  # The shared presets and the console engine the `testbed` CLI runs on, published from figentra/stackra to the
+  # Stackra registry (exact, never a range). @stackra/console 0.9.0 carries `json: "bare"`, `requireCommand` and
+  # `inherit` (ADR 0506 amendment of 2026-11-03).
   stackra:
     "@stackra/commitlint-config": 0.8.0
+    "@stackra/console": 0.9.0
     "@stackra/tsdown-config": 0.8.0
     "@stackra/typescript-config": 0.8.0
+    "@stackra/validation": 0.9.0
     "@stackra/vitest-config": 0.8.0
 
 # Install scripts allowed to run (reviewed, as figentra/stackra reviews them); any other fails install with
@@ -54,6 +58,11 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - "@figentra-oss/flow@0.2.3"
   - "@stackra/commitlint-config@0.8.0"
+  - "@stackra/console@0.9.0"
+  # @stackra/console's own dependencies from the same release.
+  - "@stackra/container@0.9.0"
+  - "@stackra/contracts@0.9.0"
   - "@stackra/tsdown-config@0.8.0"
   - "@stackra/typescript-config@0.8.0"
+  - "@stackra/validation@0.9.0"
   - "@stackra/vitest-config@0.8.0"

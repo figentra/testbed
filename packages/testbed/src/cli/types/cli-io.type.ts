@@ -2,7 +2,8 @@
  * Testbed file contract:
  * Purpose: `CliIo`, where `testbed` writes: its normal output, its errors, and whether a tool it starts may take over
  *          this process's terminal.
- * Boundary: type only. The bin passes `PROCESS_IO`; a test passes an io that collects the text.
+ * Boundary: type only. `TestbedCommand` passes the console run's stdout and stderr; a test passes an io that collects
+ *           the text. Streamed tools share the streams through the console's `io.process`, not through this io.
  * Runtime: node
  * Governing contract: ADR 0522 (the `testbed` CLI).
  */

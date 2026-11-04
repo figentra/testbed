@@ -17,7 +17,7 @@ import type { CliIo } from "#cli/types/cli-io.type";
  * @param run - the program (found on `PATH`), its arguments and its directory.
  * @param io - where its output goes, unless it inherits the terminal.
  * @example
- * const code = await runProcess({ command: "gh", args: ["auth", "status"], cwd }, PROCESS_IO);
+ * const code = await runProcess({ command: "gh", args: ["auth", "status"], cwd }, { out, err, inherit: false });
  */
 export function runProcess(
   run: { readonly command: string; readonly args: readonly string[]; readonly cwd: string },

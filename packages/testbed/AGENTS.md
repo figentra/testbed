@@ -15,17 +15,19 @@ The testbed (ADR 0484): the Pulumi program part, the box agent, the images and t
 
 ## Where code goes
 
-| You are writing…                          | It goes in…                                                             |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| A plan rule (pure, no Pulumi, no Node)    | `src/core/functions/<name>.function.ts`                                 |
-| A default shared with the CLI and the box | `TESTBED_DEFAULTS` in `src/core/constants/` (and the contract file)     |
-| A tool version                            | `TOOLCHAIN_PINS`, and nowhere else                                      |
-| Pulumi resources or a file reader         | `src/node/functions/<name>.function.ts`                                 |
-| A CLI verb, flag or helper                | `src/cli/` (it imports `TESTBED_DEFAULTS`; no copy of a default)        |
-| The box agent                             | `src/agent/testbed-agent.sh`, tests in `src/agent/__tests__/`           |
-| The job image                             | `images/job/Dockerfile`                                                 |
-| Host image steps and systemd files        | `images/host/components/*.yml`, `images/host/files/`                    |
-| A test                                    | `__tests__/<name>.test.ts` beside it; fixtures in `__tests__/fixtures/` |
+| You are writing…                          | It goes in…                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| A plan rule (pure, no Pulumi, no Node)    | `src/core/functions/<name>.function.ts`                                               |
+| A default shared with the CLI and the box | `TESTBED_DEFAULTS` in `src/core/constants/` (and the contract file)                   |
+| A tool version                            | `TOOLCHAIN_PINS`, and nowhere else                                                    |
+| Pulumi resources or a file reader         | `src/node/functions/<name>.function.ts`                                               |
+| A CLI verb                                | `src/cli/commands/<verb>.command.ts` on `TestbedCommand`, listed in `TESTBED_CONSOLE` |
+| A flag (every verb takes every flag)      | `src/cli/bases/testbed-command.base.ts`                                               |
+| A CLI helper                              | `src/cli/` (it imports `TESTBED_DEFAULTS`; no copy of a default)                      |
+| The box agent                             | `src/agent/testbed-agent.sh`, tests in `src/agent/__tests__/`                         |
+| The job image                             | `images/job/Dockerfile`                                                               |
+| Host image steps and systemd files        | `images/host/components/*.yml`, `images/host/files/`                                  |
+| A test                                    | `__tests__/<name>.test.ts` beside it; fixtures in `__tests__/fixtures/`               |
 
 ## Rules
 
@@ -33,6 +35,8 @@ The testbed (ADR 0484): the Pulumi program part, the box agent, the images and t
   `src/core/constants/toolchain-pins.constant.ts` and core's four install files (`pnpm-lock.yaml`,
   `pnpm-workspace.yaml`, `.pnpmfile.mjs`, `.npmrc`) set the image version (`testbedInputs`). Any byte change, a
   comment included, is a new recipe version and an image rebuild; make one only in a change meant to rebuild.
+- The CLI runs on @stackra/console with bare `--json` and `requireCommand` (`TESTBED_CONSOLE`); the frozen interface
+  of ADR 0522 decision 5 is pinned by `src/cli/constants/__tests__/testbed-console.constant.test.ts`.
 - The contract is `.agents/specs/sta-1626-testbed/agent-contract.md`: the verbs, exit codes (73 busy, 75 unhealthy,
   124 timeout), the `run --json` line, `status --json`, paths, tags, group names `stackra-testbed-heavy` and
   `stackra-testbed-light`. A change to the agent, the CLI or `TESTBED_DEFAULTS` changes the contract file in the same
