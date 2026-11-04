@@ -297,9 +297,13 @@ describe("testbed-agent job run", () => {
     expect(logged()).toMatch(/-v \S+\/data\/pnpm-cache:\/pnpm-cache /);
     expect(logged()).toContain("-e PNPM_CONFIG_CACHE_DIR=/pnpm-cache");
     expect(logged()).toContain("pnpm install --prefer-offline --frozen-lockfile");
+    // A repository narrows the install from its own .testbed/install-args, read inside the container.
+    expect(logged()).toContain("$(cat .testbed/install-args 2>/dev/null)");
     // Writable, so a package the store lacks can be added during the install, with integrity checks forced on.
     expect(logged()).toMatch(/-v \S+\/pnpm-store:\/pnpm-store /);
     expect(logged()).toContain("-e PNPM_CONFIG_VERIFY_STORE_INTEGRITY=true");
+    // Uniwind Pro's verified tarball stays in the box's pnpm cache, so its CI download quota is spent once per box.
+    expect(logged()).toContain("-e UNIWIND_CACHE_DIR=/pnpm-cache/uniwind");
     expect(logged()).not.toContain(TOKEN);
     expect(run.out + run.err).not.toContain(TOKEN);
     expect(readFileSync(`${log}.env`, "utf8")).toContain(`INFISICAL_TOKEN=${TOKEN}`);
