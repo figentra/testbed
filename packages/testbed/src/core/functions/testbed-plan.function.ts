@@ -5,7 +5,8 @@
  *          `light` spot group (c7i, c6i and m7i 2xlarge, 0 to 1), sized to the region's vCPU quotas (8 on-demand,
  *          8 spot), a 40 GB root and a 200 GB XFS `/data` disk deleted with the instance, the guard
  *          thresholds, the 60 minute idle stop, the image parameters (built by hand, no schedule), the toolchain pins
- *          and the secret grants. The result is validated by zod, which refuses a plan above the quotas.
+ *          and the secret grants (core's CI paths, and the registry read path for every project, `*`). The result is
+ *          validated by zod, which refuses a plan above the quotas.
  * Boundary: pure; no Pulumi, no Node, no cloud. A grant exists only when the caller passes the Infisical project id,
  *           and holds ids and paths, never a value (ADR 0173).
  * Runtime: isomorphic
@@ -45,6 +46,9 @@ export function testbedPlan(input: TestbedPlanInput = {}): TestbedPlan {
               path: "/ci/turbo",
             },
           ],
+          // Every project, core included: the registry read token, so a repository that installs @figentra/* (every
+          // product) can install on a box (owner-todo item 7). The agent merges `*` into each project's grants.
+          "*": [{ projectId: given.ciGateProjectId, environment, path: "/ci/registry" }],
         };
 
   return TESTBED_PLAN_SCHEMA.parse({

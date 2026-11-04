@@ -110,7 +110,7 @@ export const TESTBED_PLAN_SCHEMA = z
         /** The Infisical machine identity name; its id is a Pulumi config input, an id and not a secret. */
         identityName: z.string().min(1),
         identityId: z.string().min(1).optional(),
-        /** Project name (as `testbed run` names it) to the paths a job of it may read. */
+        /** Project name (as `testbed run` names it) to the paths a job of it may read; `*` adds to every project. */
         projects: z.record(z.string(), z.array(GRANT)),
       })
       .strict(),
