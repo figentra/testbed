@@ -45,9 +45,15 @@ function stub(name: string, body: string): void {
   chmodSync(join(dir("bin"), name), 0o755);
 }
 
+// A box job runs these tests under `infisical run` with a real Infisical token (core's grants): the agent under test
+// must never inherit it, or a failing assertion prints it.
+const inherited = Object.fromEntries(
+  Object.entries(process.env).filter(([name]) => !/TOKEN|SECRET|PASSWORD|_KEY$/.test(name)),
+) as Record<string, string>;
+
 function env(extra: Record<string, string> = {}): Record<string, string> {
   return {
-    ...(process.env as Record<string, string>),
+    ...inherited,
     PATH: `${dir("bin")}:${process.env.PATH ?? ""}`,
     TESTBED_DATA_DIR: dir("data"),
     TESTBED_ROOT_DIR: dir("rootfs"),
