@@ -69,7 +69,7 @@
   "publishConfig": {
     "access": "public",
     "provenance": true,
-    "registry": "https://npm.stackra.figentra.com/"
+    "registry": "https://registry.figentra.com/"
   },
   "scripts": {
     "build": "tsdown",

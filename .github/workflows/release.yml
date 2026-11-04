@@ -1,9 +1,9 @@
 # Testbed file contract:
 # Purpose: the Release workflow. On a push to main with pending changesets it opens or updates the "version packages"
-#          PR; when that PR merges it publishes `@figentra/testbed` to the registry at https://npm.stackra.figentra.com/
+#          PR; when that PR merges it publishes `@figentra/testbed` to the registry at https://registry.figentra.com/
 #          with provenance, a tag and a GitHub release, then the signed SBOM and checksums. All of it is figentra/stackra's
 #          Runway npm provider, called at a pinned commit, not copied.
-# Boundary: publishes only to https://npm.stackra.figentra.com/ (ADR 0453), never npmjs. An agent never dispatches it.
+# Boundary: publishes only to https://registry.figentra.com/ (ADR 0453), never npmjs. An agent never dispatches it.
 #           The `release` environment is restricted to main, and the owner's merge of the version PR is the control.
 # Runtime: GitHub Actions
 # Secrets: no registry token exists. Per package, the provider exchanges this job's GitHub ID token at the registry
@@ -66,7 +66,7 @@ jobs:
       environment: release
       build-args: --filter=@figentra/testbed
       dry-run: ${{ inputs.dry_run == true }}
-      registry: https://npm.stackra.figentra.com/
+      registry: https://registry.figentra.com/
     secrets:
       app-id: ${{ secrets.STACKRA_BOT_APP_ID }}
       app-private-key: ${{ secrets.STACKRA_BOT_PRIVATE_KEY }}
