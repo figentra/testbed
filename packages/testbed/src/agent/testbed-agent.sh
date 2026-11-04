@@ -36,7 +36,7 @@ MIN_MEM_MB=${TESTBED_MIN_MEM_MB:-1024}
 MEMINFO=${TESTBED_MEMINFO:-/proc/meminfo}
 LABEL=stackra.testbed.job
 # What the Mac's rsync leaves out; the seed refresh leaves out the same.
-EXCLUDES='node_modules .git .claude/worktrees .env* *.secrets.local.cue .mcp.json .turbo dist .next'
+EXCLUDES='node_modules .git .claude/worktrees .env* *.secrets.local.cue .mcp.json .turbo dist .next .cache'
 # The host's mise lives in /opt/mise (01-base.yml); its shims find the tools only through these two variables.
 MISE_DATA_DIR=${MISE_DATA_DIR:-/opt/mise}
 MISE_GLOBAL_CONFIG_FILE=${MISE_GLOBAL_CONFIG_FILE:-/opt/mise/config.toml}
