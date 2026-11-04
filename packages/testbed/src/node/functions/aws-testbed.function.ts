@@ -157,7 +157,10 @@ export function awsTestbed(plan: TestbedPlan, options: AwsTestbedOptions): AwsTe
     // for the CloudWatch alarm the owner sets (notes cost-backstop draft).
     maxInstanceLifetime: 86_400,
     metricsGranularity: "1Minute",
-    enabledMetrics: ["GroupInServiceInstances", "GroupDesiredCapacity"],
+    enabledMetrics: [
+      aws.autoscaling.Metric.GroupInServiceInstances,
+      aws.autoscaling.Metric.GroupDesiredCapacity,
+    ],
   };
   // The CLI and the idle pass move the desired count, so Pulumi owns the bounds and not the count.
   const groupOpts = { ...opts, ignoreChanges: ["desiredCapacity"] };
