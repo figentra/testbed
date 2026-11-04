@@ -39,7 +39,7 @@ describe("resolveTestbedSettings", () => {
     expect(resolveTestbedSettings({}, {}, "/h")).toEqual({
       profile: "academorix",
       region: "eu-west-1",
-      regions: ["eu-west-1", "eu-west-2", "eu-central-1"],
+      regions: ["eu-west-1", "eu-west-2", "eu-central-1", "us-east-1"],
       key: "/h/.ssh/academorix-ci.pem",
       user: "ubuntu",
       sshDirect: false,
@@ -60,6 +60,7 @@ describe("resolveTestbedSettings", () => {
       "eu-west-1",
       "eu-west-2",
       "eu-central-1",
+      "us-east-1",
     ]);
   });
 

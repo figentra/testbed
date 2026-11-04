@@ -24,8 +24,8 @@ secrets, the fallback, cost, and the migration from the old ci-box fleet.
 > more. Never request or suggest a quota increase without the owner's explicit confirmation; reading a quota is fine.
 
 Builder sessions never run heavy checks on the Mac. Only oxfmt and oxlint run there. Install, build, gen, typecheck,
-tests, e2e and integration tests all run on the testbed: identical EC2 boxes, built from one image, in one region
-(eu-west-1).
+tests, e2e and integration tests all run on the testbed: identical EC2 boxes, built from one image, in four regions
+(eu-west-1, eu-west-2, eu-central-1 and us-east-1, tried in that order).
 
 ## Live names
 
