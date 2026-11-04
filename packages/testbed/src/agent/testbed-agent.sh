@@ -440,11 +440,15 @@ EOF
     done
   fi
 
+  # Uniwind Pro (ADR 0310 d11) downloads its licensed build in its postinstall, against a monthly CI quota; it reuses
+  # a checksum-verified tarball from UNIWIND_CACHE_DIR, kept in the box's pnpm cache so one download serves every job.
   # Prefer offline, not offline only: a package or metadata entry the store lacks is fetched instead of failing the job.
   # The store is mounted writable for that (pnpm's store is made for concurrent installs); testbed-image.yml reports
   # whether a read-only mount could serve an install at all. Integrity checks stay on, so a file one job left changed
   # in the shared store fails the next job's install against the lockfile's hashes.
-  inner="cd /work && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy; } && {$NL$command_text$NL}"
+  # A repository can narrow the install with pnpm flags in .testbed/install-args (core leaves out the two Uniwind Pro
+  # members, whose licensed download has a monthly quota); the words are the repository's own, like its command.
+  inner="cd /work && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy \$(cat .testbed/install-args 2>/dev/null); } && {$NL$command_text$NL}"
   wrap "sh -c $(sq "$inner")" || {
     say "unhealthy: grants"
     exit 75
@@ -453,6 +457,7 @@ EOF
     -v "$JOB_WS:/work" -v "$STORE:/pnpm-store" -v "$PNPM_CACHE:/pnpm-cache" -v "$DATA/turbo-cache:/turbo-cache" \
     -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)" \
     -e TURBO_CACHE_DIR=/turbo-cache -e PNPM_CONFIG_CACHE_DIR=/pnpm-cache -e PNPM_CONFIG_VERIFY_STORE_INTEGRITY=true \
+    -e UNIWIND_CACHE_DIR=/pnpm-cache/uniwind \
     -e CI=true -e "TESTBED_JOB=$JOB_ID"
   [ "$postgres" = 0 ] || set -- "$@" -e "TESTBED_POSTGRES_HOST=tb-$JOB_ID-pg"
   [ -z "${INFISICAL_TOKEN:-}" ] || set -- "$@" -e INFISICAL_TOKEN -e INFISICAL_DOMAIN

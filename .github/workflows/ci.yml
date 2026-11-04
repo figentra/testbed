@@ -1,7 +1,9 @@
 # Testbed file contract:
 # Purpose: the Quality Gate, the one required check on every pull request and push to main: workflow lint (actionlint,
-#          zizmor), install, format check, lint, typecheck and build. Tests run on the box, not on GitHub (STA-2064, as
-#          in figentra/stackra). Branch protection requires the `Quality Gate` job by name; never rename it.
+#          zizmor), install, format check, lint, typecheck, the unit tests and build. The unit tier is small and needs
+#          only sh, jq, rsync, flock and coreutils, so it runs here (day-1 bar: no package ships with tests nothing
+#          runs); core's own suites stay on the box (STA-2064). Branch protection requires the `Quality Gate` job by
+#          name; never rename it.
 # Owner: release-operations
 # Secrets: none. The @stackra presets come from the registry's open scope, which needs no token; zizmor reads the
 #          action SHAs with the read-only job token.
@@ -62,6 +64,11 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # The plan, the Pulumi program under mocks, the CLI and the box agent against stubs. The pin-equality test needs
+      # CORE_CHECKOUT and is skipped here; the daily testbed-image job runs it against core main.
+      - name: Test
+        run: pnpm test
 
       - name: Build
         run: pnpm build
