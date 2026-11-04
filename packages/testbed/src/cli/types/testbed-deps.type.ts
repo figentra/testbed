@@ -1,6 +1,6 @@
 /**
  * Testbed file contract:
- * Purpose: `TestbedDeps`, everything `runTestbed` takes from outside: the processes it starts, the clock, the claim folder and this Mac's public IP, so tests fake all of it.
+ * Purpose: `TestbedDeps`, everything `runTestbed` takes from outside: the processes it starts, the clock, the claim folder, this Mac's public IP and the Session Manager plugin, so tests fake all of it.
  * Boundary: type only; the command builds the real one, a test builds a fake.
  * Runtime: node
  * Governing contract: ADR 0484 (the testbed); ADR 0522 (the `testbed` CLI).
@@ -35,4 +35,10 @@ export type TestbedDeps = {
 
   /** Calls `handler` once on SIGINT or SIGTERM; the returned function removes it. */
   readonly onInterrupt: (handler: () => void) => () => void;
+
+  /**
+   * Makes the aws CLI's Session Manager plugin reachable for the processes started after it (SSM needs it): resolves
+   * `undefined` when it is, else the reason it is not.
+   */
+  readonly ssmPlugin: () => Promise<string | undefined>;
 };
