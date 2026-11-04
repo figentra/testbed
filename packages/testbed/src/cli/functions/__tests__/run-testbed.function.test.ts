@@ -160,6 +160,7 @@ const request = (overrides: Partial<TestbedRequest>): TestbedRequest => ({
   ref: undefined,
   noWait: false,
   onDemand: false,
+  postgres: false,
   json: false,
   settings: { profile: "p", region: "r", regions: ["r"], key: "/k", user: "ubuntu" },
   ...overrides,
@@ -191,6 +192,12 @@ describe("runTestbed run", () => {
     expect(streams[0]).toContain("--exclude node_modules");
     expect(streams[1]).toContain("testbed-agent job run");
     expect(streams[1]).toContain(" light 'me work' 'app' -- 'pnpm lint'");
+  });
+
+  it("asks the box for a Postgres beside the job with --postgres", async () => {
+    const { deps, streams } = fake({ boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]) });
+    expect(await runTestbed(request({ postgres: true }), deps, captureIo().io)).toBe(0);
+    expect(streams[1]).toContain(" light 'me work' 'app' --postgres -- 'pnpm lint'");
   });
 
   it("runs a light command in the heavy (on-demand) slot with --on-demand", async () => {

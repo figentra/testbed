@@ -494,7 +494,7 @@ export async function runTestbed(
           box,
           id,
           slot,
-          `testbed-agent job run ${quote(id)} ${slot} ${quote(who)} ${quote(project)} -- ${quote(command)}`,
+          `testbed-agent job run ${quote(id)} ${slot} ${quote(who)} ${quote(project)}${request.postgres ? " --postgres" : ""} -- ${quote(command)}`,
         );
         if (code === EXIT.unhealthy) {
           skip.add(box.id);

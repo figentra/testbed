@@ -25,7 +25,7 @@ const SUMMARY =
   "Run heavy work on the shared test boxes (run, status, unlock, ip, ssh, sync, scale, image)";
 
 const USAGE =
-  'testbed run "<session> <what>" <dir> "<cmd>" [--preset verify|e2e|integration --ref <ref>] [--json] [--regions a,b] [--region r] [--no-wait] [--on-demand] [--ssh-direct] | status [--json] | unlock [--box N|id] [--region r] [--slot heavy|light] | ip [--box] | ssh [--box] [cmd] | sync [--box] <dir> | scale [--box N|id] [--region r] [--slot heavy|light] | image';
+  'testbed run "<session> <what>" <dir> "<cmd>" [--preset verify|e2e|integration --ref <ref>] [--json] [--regions a,b] [--region r] [--no-wait] [--on-demand] [--postgres] [--ssh-direct] | status [--json] | unlock [--box N|id] [--region r] [--slot heavy|light] | ip [--box] | ssh [--box] [cmd] | sync [--box] <dir> | scale [--box N|id] [--region r] [--slot heavy|light] | image';
 
 const flag = (value: string | boolean | undefined): string | undefined =>
   typeof value === "string" ? value : undefined;
@@ -57,6 +57,7 @@ export async function runTestbedCli(
         ref: { type: "string" },
         "no-wait": { type: "boolean" },
         "on-demand": { type: "boolean" },
+        postgres: { type: "boolean" },
         "ssh-direct": { type: "boolean" },
         profile: { type: "string" },
         region: { type: "string" },
@@ -90,6 +91,7 @@ export async function runTestbedCli(
         ref: flag(values.ref),
         noWait: values["no-wait"] === true,
         onDemand: values["on-demand"] === true,
+        postgres: values["postgres"] === true,
         json,
         settings: resolveTestbedSettings(values, process.env, homedir()),
       },

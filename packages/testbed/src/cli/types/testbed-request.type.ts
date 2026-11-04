@@ -37,6 +37,9 @@ export type TestbedRequest = {
   /** `--on-demand`: run in the heavy (on-demand) slot whatever the command, so spot never interrupts it. */
   readonly onDemand: boolean;
 
+  /** `--postgres`: the box starts a throwaway Postgres beside the job and sets `TESTBED_POSTGRES_HOST` (integration). */
+  readonly postgres: boolean;
+
   /** `--json`: `run` streams the job to stderr and prints one result line on stdout; `status` prints JSON. */
   readonly json: boolean;
 
