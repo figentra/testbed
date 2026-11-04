@@ -1,6 +1,7 @@
 /**
  * Testbed file contract:
- * Purpose: unit tests of `awsTestbed` under Pulumi's mocks: the provider is pinned to eu-west-1; the security group
+ * Purpose: unit tests of `awsTestbed` under Pulumi's mocks: the provider is pinned to eu-west-1; the default subnets
+ *          are only those in zones that offer the heavy type; the security group
  *          allows SSH only from the allowlist; the launch template resolves the AMI from the SSM parameter, requires
  *          IMDSv2, has a 40 GB root and a 200 GB data volume deleted with the instance, and its user data holds ids
  *          and no secret; `heavy` is on-demand and `light` is mixed-instances spot with capacity rebalance; both
@@ -40,6 +41,8 @@ const LOCKFILE = fileURLToPath(new URL("fixtures/pnpm-lock.yaml", import.meta.ur
 const PLAN = testbedPlan({ identityId: "identity-1", ciGateProjectId: "project-1" });
 
 let stack: AwsTestbed;
+// The inputs of the getSubnets call, as the mocks saw them.
+let subnetQuery: Record<string, unknown> | undefined;
 
 function resource(kind: string, name: string): Registered {
   const found = registered.find((entry) => entry.type.endsWith(`:${kind}`) && entry.name === name);
@@ -77,8 +80,17 @@ beforeAll(async () => {
         if (args.token === "aws:index/getCallerIdentity:getCallerIdentity")
           return { accountId: "111122223333", arn: "arn:mock", userId: "mock", id: "mock" };
         if (args.token === "aws:ec2/getVpc:getVpc") return { id: "vpc-1" };
-        if (args.token === "aws:ec2/getSubnets:getSubnets")
+        if (args.token === "aws:ec2/getInstanceTypeOfferings:getInstanceTypeOfferings")
+          return {
+            locations: ["eu-west-1a", "eu-west-1b"],
+            instanceTypes: [],
+            locationTypes: [],
+            id: "x",
+          };
+        if (args.token === "aws:ec2/getSubnets:getSubnets") {
+          subnetQuery = args.inputs as Record<string, unknown>;
           return { ids: ["subnet-a", "subnet-b"] };
+        }
         return args.inputs as Record<string, unknown>;
       },
     },
@@ -98,6 +110,13 @@ beforeAll(async () => {
 });
 
 describe("awsTestbed", () => {
+  it("takes only the subnets in zones that offer the heavy instance type", () => {
+    expect(subnetQuery?.["filters"]).toEqual([
+      { name: "vpc-id", values: ["vpc-1"] },
+      { name: "availability-zone", values: ["eu-west-1a", "eu-west-1b"] },
+    ]);
+  });
+
   it("pins the provider to the plan's region", () => {
     expect(resource("providers:aws", "testbed").inputs.region).toBe("eu-west-1");
     expect(stack.region).toBe("eu-west-1");
@@ -173,6 +192,9 @@ describe("awsTestbed", () => {
     for (const name of ["heavy", "light"]) {
       const group = resource("autoscaling/group:Group", name).inputs;
       expect(group.healthCheckType).toBe("EC2");
+      // The cost backstop: no box lives past a day, and the in-service count feeds the owner's alarm.
+      expect(group.maxInstanceLifetime).toBe(86_400);
+      expect(group.enabledMetrics).toEqual(["GroupInServiceInstances", "GroupDesiredCapacity"]);
       expect(group.instanceRefresh).toMatchObject({
         strategy: "Rolling",
         preferences: { minHealthyPercentage: 100, scaleInProtectedInstances: "Wait" },
@@ -301,6 +323,7 @@ describe("awsTestbed with a given network and no groups", () => {
       vpcId: "vpc-9",
       subnetIds: ["subnet-9", "subnet-10"],
       groups: false,
+      permissionsBoundary: "arn:aws:iam::111122223333:policy/stackra-testbed-boundary",
     });
     await new Promise((resolve) => {
       bare.securityGroupId.apply(resolve);
@@ -310,6 +333,19 @@ describe("awsTestbed with a given network and no groups", () => {
 
   const later = (kind: string): Registered[] =>
     registered.slice(start).filter((entry) => entry.type.endsWith(`:${kind}`));
+
+  it("sets the given permissions boundary on every role it creates, and none without it", () => {
+    const roles = later("iam/role:Role");
+    expect(roles.map((role) => role.inputs.permissionsBoundary)).toEqual([
+      "arn:aws:iam::111122223333:policy/stackra-testbed-boundary",
+      "arn:aws:iam::111122223333:policy/stackra-testbed-boundary",
+    ]);
+    const first = registered
+      .slice(0, start)
+      .filter((entry) => entry.type.endsWith(":iam/role:Role"));
+    expect(first.length).toBe(2);
+    for (const role of first) expect(role.inputs.permissionsBoundary).toBeUndefined();
+  });
 
   it("uses the given VPC and first subnet, and declares no Auto Scaling group", () => {
     expect(later("ec2/securityGroup:SecurityGroup")[0]?.inputs.vpcId).toBe("vpc-9");

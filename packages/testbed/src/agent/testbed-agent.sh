@@ -41,7 +41,8 @@ EXCLUDES='node_modules .git .claude/worktrees .env* *.secrets.local.cue .mcp.jso
 MISE_DATA_DIR=${MISE_DATA_DIR:-/opt/mise}
 MISE_GLOBAL_CONFIG_FILE=${MISE_GLOBAL_CONFIG_FILE:-/opt/mise/config.toml}
 export MISE_DATA_DIR MISE_GLOBAL_CONFIG_FILE
-PATH=/opt/mise/shims:$PATH
+# Overridable so the unit tests' stubs win inside the job container, whose own /opt/mise holds the real tools.
+PATH=${TESTBED_MISE_SHIMS:-/opt/mise/shims}:$PATH
 TAB=$(printf '\t')
 NL=$(printf '\n_')
 NL=${NL%_}

@@ -27,7 +27,7 @@ testbed run "<session> <what>" <project-dir> "<command>"
 - The command runs in a fresh container with a clean workspace. Nothing you leave there survives the job.
 - Heavy jobs (`encore test`, `playwright`, `e2e`, `act `, `build`, or `--on-demand`) take the heavy slot. Everything
   else takes the light slot. A light job may land on a spot box. If that box is taken back, the job is retried once on
-  another box.
+  another box. A dropped connection does not end a job: it runs detached on the box and the CLI reattaches.
 - The exit code is the command's own: 0 is green, anything else is a real failure. Read the output.
 - The testbed spans several regions. The CLI tries its enabled regions in order and starts a box where there is room,
   so you never pick a region or a box. `--regions a,b`, `--region r` or `STACKRA_TESTBED_REGIONS` overrides the list

@@ -25,4 +25,10 @@ export type AwsTestbedOptions = {
   readonly tags?: Readonly<Record<string, string>>;
   /** `false` declares everything except the Auto Scaling groups: the launch template needs an AMI to exist. Default `true`. */
   readonly groups?: boolean;
+  /**
+   * The ARN of the permissions boundary set on every role the program creates (the box's and Image Builder's). The
+   * deploy role may create a role only with it (ADR 0484; the day-1 least-privilege bar), so it cannot mint an admin.
+   * Absent, the roles have none.
+   */
+  readonly permissionsBoundary?: string;
 };

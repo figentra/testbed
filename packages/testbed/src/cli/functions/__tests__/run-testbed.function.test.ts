@@ -70,7 +70,10 @@ type Fake = {
 /** The region an aws call names. */
 const regionOf = (args: readonly string[]): string => String(args[args.indexOf("--region") + 1]);
 
-/** `agent` answers the remote command of one ssh call; `jobRun` answers the streamed `job run`, in order. */
+/**
+ * `agent` answers the remote command of one ssh call; `jobRun` answers the streamed `job run` and each reattach to it,
+ * in order; `interrupt` fires the SIGINT handler during the first `job run`.
+ */
 function fake(options: {
   /** The describe-instances rows: one answer for every region, or one per region (`undefined` fails the call). */
   readonly boxes: string | Readonly<Record<string, string | undefined>>;
@@ -81,11 +84,13 @@ function fake(options: {
   readonly group?: string | Readonly<Record<string, string>>;
   /** The clock; each call advances it by this many milliseconds. */
   readonly tick?: number;
+  readonly interrupt?: boolean;
 }): Fake {
   const calls: string[] = [];
   const streams: string[] = [];
   const jobRun = [...(options.jobRun ?? [0])];
   let clock = 1_000_000;
+  let onInterrupt: (() => void) | undefined;
   const deps: TestbedDeps = {
     exec: async (command, args) => {
       calls.push(`${command} ${args.join(" ")}`);
@@ -114,7 +119,9 @@ function fake(options: {
     },
     stream: async (command, args) => {
       streams.push(`${command} ${args.join(" ")}`);
-      if (command === "ssh" && String(args.at(-1)).includes("job run")) return jobRun.shift() ?? 0;
+      const remote = String(args.at(-1));
+      if (command === "ssh" && remote.includes("job run") && options.interrupt) onInterrupt?.();
+      if (command === "ssh" && remote.includes("/tmp/testbed-")) return jobRun.shift() ?? 0;
       return 0;
     },
     sleep: async () => undefined,
@@ -126,6 +133,12 @@ function fake(options: {
     isAlive: () => true,
     publicIp: async () => options.ip,
     claimRoot,
+    onInterrupt: (handler) => {
+      onInterrupt = handler;
+      return () => {
+        onInterrupt = undefined;
+      };
+    },
   };
   return { deps, calls, streams };
 }
@@ -230,14 +243,48 @@ describe("runTestbed run", () => {
     expect(runs[1]).toContain("ubuntu@i-2");
   });
 
-  it("retries a light job once after the connection drops, and a heavy job never", async () => {
+  it("runs the job detached and follows its log, so a dropped connection cannot kill it", async () => {
+    const { deps, streams } = fake({ boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]) });
+    expect(await runTestbed(request({}), deps, captureIo().io)).toBe(0);
+    expect(streams[1]).toContain("setsid nohup sh -c");
+    expect(streams[1]).toMatch(/f=\/tmp\/testbed-j\w+; /);
+    expect(streams[1]).toContain('tail -n +1 -f --pid="$p" "$f.log"');
+    expect(streams[1]).toContain('rc=$(cat "$f.rc")');
+  });
+
+  it("reattaches to the same box after a dropped connection and exits with the job's code", async () => {
+    const { deps, streams } = fake({
+      boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]),
+      jobRun: [255, 7],
+    });
+    const { io, output } = captureIo();
+    expect(await runTestbed(request({}), deps, io)).toBe(7);
+    expect(streams).toHaveLength(3);
+    expect(streams[2]).toContain("ubuntu@i-1");
+    expect(streams[2]).toContain("tail -n 50 -f");
+    expect(streams[2]).not.toContain("job run");
+    expect(output()).toContain("the job keeps running there, reattaching");
+  });
+
+  it("stops the job on the box on Ctrl-C and exits 130", async () => {
+    const { deps, calls } = fake({
+      boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]),
+      jobRun: [255],
+      interrupt: true,
+    });
+    expect(await runTestbed(request({}), deps, captureIo().io)).toBe(130);
+    expect(calls.some((call) => call.includes("testbed-agent job stop light"))).toBe(true);
+  });
+
+  it("retries a light job once after the box is lost, and a heavy job never", async () => {
     const boxes = instances(
       ["i-1", "heavy", "2026-10-30T00:00:00Z"],
       ["i-2", "heavy", "2026-10-30T01:00:00Z"],
     );
-    const light = fake({ boxes, jobRun: [255, 0] });
+    // The first attempt and its three reattaches all fail with 255: the box is gone.
+    const light = fake({ boxes, jobRun: [255, 255, 255, 255, 0] });
     expect(await runTestbed(request({}), light.deps, captureIo().io)).toBe(0);
-    const heavy = fake({ boxes, jobRun: [255, 0] });
+    const heavy = fake({ boxes, jobRun: [255, 255, 255, 255, 0] });
     expect(
       await runTestbed(
         request({ args: ["w", "/tmp/app", "pnpm build"] }),
