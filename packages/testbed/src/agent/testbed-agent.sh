@@ -3,7 +3,8 @@
 # Purpose: testbed-agent, the box agent of the testbed: `slot`, `health`, `status`, `job prepare|run|stop`, `guard` and
 #          `idle` (the verbs, exit codes, paths and tags of .agents/specs/sta-1626-testbed/agent-contract.md). A job
 #          runs in a fresh container from the job image, in /data/jobs/<id>/<project>, under scale-in protection, with
-#          a short-lived Infisical token for the paths its project is granted and nothing else; cleanup always runs.
+#          a short-lived Infisical token for the paths its project is granted (plus the `*` grants every project gets,
+#          the registry read token) and nothing else; cleanup always runs.
 # Boundary: POSIX sh plus jq, rsync, flock and GNU coreutils; installed by the AMI at /usr/local/bin/testbed-agent. It
 #           reads /etc/testbed/grants.json (ids and paths) and /etc/testbed/identity (an id). The Infisical token lives
 #           in one shell variable and reaches the container by `-e INFISICAL_TOKEN` (the name, never the value on a
@@ -37,6 +38,11 @@ MEMINFO=${TESTBED_MEMINFO:-/proc/meminfo}
 LABEL=stackra.testbed.job
 # What the Mac's rsync leaves out; the seed refresh leaves out the same.
 EXCLUDES='node_modules .git .claude/worktrees .env* *.secrets.local.cue .mcp.json .turbo dist .next .cache'
+# The registry read token (FIGENTRA_REGISTRY_TOKEN; STACKRA_REGISTRY_TOKEN until the registry move retires it) under
+# both names, and the repository's own .npmrc as pnpm's auth file: pnpm 12 expands no variable in a project .npmrc,
+# so its `_authToken=${...}` line is ignored otherwise. The token stays in the environment, never in a file; every
+# project a box runs is ours (ADR 0484). Run in the directory whose .npmrc names the registry.
+REGISTRY_AUTH='t=${FIGENTRA_REGISTRY_TOKEN:-${STACKRA_REGISTRY_TOKEN:-}}; if [ -n "$t" ] && [ -f "$PWD/.npmrc" ]; then FIGENTRA_REGISTRY_TOKEN=$t STACKRA_REGISTRY_TOKEN=$t PNPM_CONFIG_NPMRC_AUTH_FILE=$PWD/.npmrc; export FIGENTRA_REGISTRY_TOKEN STACKRA_REGISTRY_TOKEN PNPM_CONFIG_NPMRC_AUTH_FILE; fi; unset t'
 # The host's mise lives in /opt/mise (01-base.yml); its shims find the tools only through these two variables.
 MISE_DATA_DIR=${MISE_DATA_DIR:-/opt/mise}
 MISE_GLOBAL_CONFIG_FILE=${MISE_GLOBAL_CONFIG_FILE:-/opt/mise/config.toml}
@@ -149,7 +155,7 @@ protect() {
 
 grants_for() {
   [ -s "$ETC/grants.json" ] || return 0
-  jq -r --arg p "$1" '.[$p] // [] | .[] | [.projectId, .environment, .path] | @tsv' "$ETC/grants.json"
+  jq -r --arg p "$1" '(.[$p] // []) + (.["*"] // []) | .[] | [.projectId, .environment, .path] | @tsv' "$ETC/grants.json"
 }
 has_grants() { [ -s "$ETC/grants.json" ] && jq -e 'map(length) | add > 0' "$ETC/grants.json" >/dev/null 2>&1; }
 infisical_token() {
@@ -413,7 +419,7 @@ EOF
   mkdir -p "$STORE" "$PNPM_CACHE" "$DATA/turbo-cache"
   export PNPM_CONFIG_CACHE_DIR="$PNPM_CACHE"
   if [ -f "$JOB_WS/pnpm-lock.yaml" ]; then
-    wrap "pnpm fetch --ignore-scripts --store-dir $(sq "$STORE")" || {
+    wrap "sh -c $(sq "$REGISTRY_AUTH; exec pnpm fetch --ignore-scripts --store-dir $(sq "$STORE")")" || {
       say "unhealthy: grants"
       exit 75
     }
@@ -449,7 +455,7 @@ EOF
   # in the shared store fails the next job's install against the lockfile's hashes.
   # A repository can narrow the install with pnpm flags in .testbed/install-args (core leaves out the two Uniwind Pro
   # members, whose licensed download has a monthly quota); the words are the repository's own, like its command.
-  inner="cd /work && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy \$(cat .testbed/install-args 2>/dev/null); } && {$NL$command_text$NL}"
+  inner="cd /work && { $REGISTRY_AUTH; } && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy \$(cat .testbed/install-args 2>/dev/null); } && {$NL$command_text$NL}"
   wrap "sh -c $(sq "$inner")" || {
     say "unhealthy: grants"
     exit 75

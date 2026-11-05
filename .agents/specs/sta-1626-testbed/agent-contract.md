@@ -18,7 +18,10 @@ Exit codes reserved: 73 slot busy, 75 box unhealthy (caller picks another box), 
 
 - The workspace is `/data/jobs/<id>/<project>`; the Mac rsyncs into it after `job prepare`.
 - Secrets: `/etc/testbed/grants.json` (written from the plan at boot, no value) maps a project name to a list of
-  `{ projectId, environment, path }`; projects absent from it run with no Infisical token. The identity id is in
+  `{ projectId, environment, path }`; the key `*` adds its paths to every project (the registry read path), and a
+  project with no paths at all runs with no Infisical token. A job that gets `FIGENTRA_REGISTRY_TOKEN` (or the old
+  `STACKRA_REGISTRY_TOKEN`) has both names set, and pnpm reads its repository's `.npmrc` as the auth file
+  (`PNPM_CONFIG_NPMRC_AUTH_FILE`), so that file's `_authToken=${...}` line works. The identity id is in
   `/etc/testbed/identity` (an id, not a secret).
 - Instance tags: `stackra:testbed` = `heavy` | `light`; `Name` = `stackra-testbed-<group>`.
 - Defaults the CLI also knows: AWS profile `academorix`, region `eu-west-1`, SSH user `ubuntu`, security group

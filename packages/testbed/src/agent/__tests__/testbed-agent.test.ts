@@ -45,9 +45,15 @@ function stub(name: string, body: string): void {
   chmodSync(join(dir("bin"), name), 0o755);
 }
 
+// A box job runs these tests under `infisical run` with a real Infisical token (core's grants): the agent under test
+// must never inherit it, or a failing assertion prints it.
+const inherited = Object.fromEntries(
+  Object.entries(process.env).filter(([name]) => !/TOKEN|SECRET|PASSWORD|_KEY$/.test(name)),
+) as Record<string, string>;
+
 function env(extra: Record<string, string> = {}): Record<string, string> {
   return {
-    ...(process.env as Record<string, string>),
+    ...inherited,
     PATH: `${dir("bin")}:${process.env.PATH ?? ""}`,
     TESTBED_DATA_DIR: dir("data"),
     TESTBED_ROOT_DIR: dir("rootfs"),
@@ -314,6 +320,26 @@ describe("testbed-agent job run", () => {
       "infisical run --silent --projectId proj1 --env prod --path /ci/turbo",
     );
     expect(logged()).toContain("echo hi");
+  });
+
+  it("gives every project the `*` grants, and pnpm the registry token through the repository's .npmrc", () => {
+    writeFileSync(
+      dir("etc/grants.json"),
+      JSON.stringify({
+        core: [{ projectId: "proj1", environment: "prod", path: "/ci/turbo" }],
+        "*": [{ projectId: "proj1", environment: "prod", path: "/ci/registry" }],
+      }),
+    );
+    const run = agent(["job", "run", "j7", "light", "me", "pay", "--", "echo hi"]);
+
+    expect(run.code).toBe(0);
+    expect(readFileSync(`${log}.env`, "utf8")).toContain(`INFISICAL_TOKEN=${TOKEN}`);
+    expect(logged()).toContain("--path /ci/registry");
+    expect(logged()).not.toContain("--path /ci/turbo");
+    // Both token names, read from either, and the repository's .npmrc as pnpm's auth file; no value on a line.
+    expect(logged()).toContain("PNPM_CONFIG_NPMRC_AUTH_FILE=$PWD/.npmrc");
+    expect(logged()).toContain("${FIGENTRA_REGISTRY_TOKEN:-${STACKRA_REGISTRY_TOKEN:-}}");
+    expect(logged()).not.toContain(TOKEN);
   });
 
   it("gives a project without grants no token", () => {

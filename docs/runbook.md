@@ -221,7 +221,11 @@ Repeat with `stackra-testbed-light`, and in each region that runs boxes (`--regi
 - At job start the agent gets a token that lives for the job's timeout. The container runs the command under
   `infisical run`. No value touches a disk, a log or a command line.
 - Which project paths a job may read is `secretGrants` in `@figentra/testbed`, reviewed like code. The identity's
-  permissions in Infisical are the real limit.
+  permissions in Infisical are the real limit. Core gets `prod` `/ci` and `/ci/turbo`; every project, through the
+  `*` key, gets `prod` `/ci/registry`, the registry read token, so a product's install of `@figentra/*` works.
+- pnpm 12 expands no variable in a repository's `.npmrc`, so the agent hands the token to pnpm under both names
+  (`FIGENTRA_REGISTRY_TOKEN`, and `STACKRA_REGISTRY_TOKEN` until the registry move retires it) and points
+  `PNPM_CONFIG_NPMRC_AUTH_FILE` at the repository's own `.npmrc`. The token stays in the job's environment.
 - `ci-box put-env` and `~/.ci-env` are retired. A missing token is fixed in Infisical, by the owner. To rotate the
   identity's auth, see [Token rotation][token-rotation] in figentra/stackra.
 
