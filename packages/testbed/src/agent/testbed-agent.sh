@@ -336,7 +336,10 @@ finish() {
   rc=$1
   if [ "$JOB_DONE" = 1 ]; then exit "$rc"; fi
   JOB_DONE=1
-  trap - EXIT TERM INT HUP
+  # `job stop` signals the agent right after it removes the container, so cleanup usually starts first: a signal now
+  # must not cut it short and leave the workspace and the scale-in protection behind (seen live, 2026-11-05).
+  trap - EXIT
+  trap '' TERM INT HUP
   ids=$(docker ps -aq --filter "label=$LABEL=$JOB_ID" 2>/dev/null || true)
   # shellcheck disable=SC2086
   [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true

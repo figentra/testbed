@@ -288,6 +288,29 @@ describe("testbed-agent job run", () => {
     );
   });
 
+  it("finishes its cleanup when `job stop` arrives during it: workspace, slot, protection", async () => {
+    // The cleanup's network removal marks that cleanup has begun, then takes a moment, as a real one can.
+    stub(
+      "docker",
+      `echo "docker $*" >> "$FAKE_LOG"
+case "$1 $2" in "network rm") : > "$FAKE_LOG.cleanup"; sleep 2 ;; esac
+exit 0`,
+    );
+    agent(["job", "prepare", "j9", "core"]);
+    const job = spawn("sh", [AGENT, "job", "run", "j9", "light", "me", "core", "--", "true"], {
+      env: env(),
+    });
+    const exited = new Promise<number | null>((done) => job.on("exit", (code) => done(code)));
+    while (!existsSync(`${log}.cleanup`)) await new Promise((wait) => setTimeout(wait, 50));
+
+    agent(["job", "stop", "light"]);
+    await exited;
+
+    expect(existsSync(dir("data/jobs/j9"))).toBe(false);
+    expect(existsSync(dir("state/slot-light"))).toBe(false);
+    expect(logged()).toContain("--no-protected-from-scale-in");
+  });
+
   it("hands the Infisical token to the container by environment, never on a command line", () => {
     agent(["job", "prepare", "j4", "core"]);
     writeFileSync(dir("data/jobs/j4/core/pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
