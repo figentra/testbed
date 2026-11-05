@@ -11,7 +11,8 @@
  *          inbound rule; `--ssh-direct` reaches the public IP and swaps this machine's address into the allowlist.
  *          Every box carries its region, and the SSM proxy and each `aws` call for it use that region. Without the
  *          Session Manager plugin SSM reaches no box, so a verb that needs one says why and `run` exits 75 at once
- *          instead of waiting on boxes that are healthy; `status` shows why a box did not answer.
+ *          instead of waiting on boxes that are healthy; `status` shows why a box did not answer. When no enabled
+ *          region answers (this machine's AWS access), `run` exits 75 at once with AWS's reason.
  * Boundary: starts only `aws`, `ssh`, `rsync` and `gh`, through `deps`, without a shell; every caller word a box shell
  *           sees is single-quoted. It calls `aws` only in an enabled region (`settings.regions`). It never reads,
  *           prints or passes a secret value (the key is a file path), and it never runs a job on the Mac. The job's
@@ -95,7 +96,8 @@ export async function runTestbed(
     (await deps.exec("aws", ["--profile", settings.profile, "--region", region, ...args])) ??
     NOT_STARTED;
 
-  // One region's running boxes, or `undefined` when its call failed (the region is unreachable).
+  // One region's running boxes, or `undefined` when its call failed (the region is unreachable; `awsError` says why).
+  let awsError = "";
   const describe = async (region: string): Promise<readonly TestbedBox[] | undefined> => {
     const out = await aws(region, [
       "ec2",
@@ -108,7 +110,9 @@ export async function runTestbed(
       "--output",
       "json",
     ]);
-    return out.code === 0 ? parseTestbedBoxes(out.stdout, region) : undefined;
+    if (out.code === 0) return parseTestbedBoxes(out.stdout, region);
+    awsError = out.stderr.trim().split("\n").pop()?.trim() ?? "";
+    return undefined;
   };
 
   // The running boxes of the enabled regions in region order, each region's oldest first; a region that does not
@@ -399,6 +403,15 @@ export async function runTestbed(
         decideTestbedFallback({ healthyCount: healthy, preset }) === "dispatch"
       ) {
         return { exit: await dispatch(preset) };
+      }
+      // No region answering is this machine's AWS access (a bad or expired profile), not a busy fleet: waiting cannot
+      // fix it, so exit 75 now and say why, instead of waiting until the caller's own timeout. The fallback above
+      // needs no AWS, so it still goes first.
+      if (seen.every((state) => !state.reachable)) {
+        say(
+          `no enabled region answers (${awsError || "no reason given"}); check the AWS profile ${settings.profile}`,
+        );
+        return { exit: EXIT.unhealthy };
       }
       if (healthy > 0) busySince ??= deps.now();
       if (step.action === "scale") {

@@ -80,8 +80,9 @@ For callers such as `fflow gate` (this interface is frozen by ADR 0522):
 
 - **`run … --json`** streams the job's output to stderr and prints one line on stdout:
   `{"region","box","slot","waitSeconds","runSeconds","exitCode"}`.
-- **The exit code** is the job's own, or 2 (usage), 73 (no free slot, with `--no-wait`), 75 (no healthy box) or 124
-  (the 3-hour limit).
+- **The exit code** is the job's own, or 2 (usage), 73 (no free slot, with `--no-wait`), 75 (no healthy box, or no
+  enabled region answers: this machine's AWS access, said at once) or 124 (the 3-hour limit). Ctrl-C or SIGTERM
+  stops the job on the box and exits 130.
 - **`status --json`** gives each region's free, total and startable heavy and light slots, so the caller sizes its
   parallel jobs.
 

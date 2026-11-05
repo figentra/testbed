@@ -14,7 +14,8 @@ side (`stackra testbed`) only ever calls these verbs over SSH as `ubuntu`. Outpu
 | `testbed-agent guard`                                                             | the disk guard pass (timer, every 5 min): clean at 70%, drain at 85%                                                                                                                                                                                                                                                                                                                  | 0             |
 | `testbed-agent idle`                                                              | the idle pass (timer): terminate self and decrement desired when idle 60 min and the group is above its minimum                                                                                                                                                                                                                                                                       | 0             |
 
-Exit codes reserved: 73 slot busy, 75 box unhealthy (caller picks another box), 124 job timeout (3 h).
+Exit codes reserved: 73 slot busy, 75 box unhealthy (caller picks another box), 124 job timeout (3 h). The CLI's
+`run` also exits 75 at once when no enabled region answers its AWS calls (this machine's AWS access), saying why.
 
 - The workspace is `/data/jobs/<id>/<project>`; the Mac rsyncs into it after `job prepare`.
 - Secrets: `/etc/testbed/grants.json` (written from the plan at boot, no value) maps a project name to a list of
