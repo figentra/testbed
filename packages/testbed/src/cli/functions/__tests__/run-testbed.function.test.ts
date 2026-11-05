@@ -333,6 +333,15 @@ describe("runTestbed run", () => {
     ).toBe(255);
   });
 
+  it("exits 75 at once, with AWS's reason, when no enabled region answers (a bad AWS profile)", async () => {
+    const { deps, calls, streams } = fake({ boxes: { a: undefined, b: undefined } });
+    const { io, output } = captureIo();
+    expect(await runTestbed(request({ settings: over("a", "b") }), deps, io)).toBe(75);
+    expect(output()).toContain("no enabled region answers (unreachable); check the AWS profile p");
+    expect(calls.some((call) => call.includes("set-desired-capacity"))).toBe(false);
+    expect(streams).toEqual([]);
+  });
+
   it("exits 75 with --no-wait when no box is healthy", async () => {
     const { deps } = fake({
       boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]),

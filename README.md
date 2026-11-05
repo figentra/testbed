@@ -25,7 +25,8 @@ grants; the job image and the host image steps; the box agent; and the `testbed`
 `run` takes `--preset verify|e2e|integration --ref <ref>`, `--regions a,b`, `--region r`, `--no-wait` and
 `--on-demand`. With `--json`, `run` prints one result line on stdout,
 `{region, box, slot, waitSeconds, runSeconds, exitCode}`, and the job's output goes to stderr; `status --json` prints
-JSON. Exit codes: `73` every box is busy, `75` no healthy box, `124` the job timed out; otherwise the job's own code.
+JSON. Exit codes: `73` every box is busy, `75` no healthy box (or no region answers AWS), `124` the job timed out, `130`
+stopped by Ctrl-C or SIGTERM; otherwise the job's own code.
 
 `scripts/ci-box-shim.sh` installs as `ci-box` and maps the old `ci-box` calls onto `testbed`.
 
