@@ -300,8 +300,14 @@ exit 0`,
     const job = spawn("sh", [AGENT, "job", "run", "j9", "light", "me", "core", "--", "true"], {
       env: env(),
     });
-    const exited = new Promise<number | null>((done) => job.on("exit", (code) => done(code)));
-    while (!existsSync(`${log}.cleanup`)) await new Promise((wait) => setTimeout(wait, 50));
+    const exited = new Promise<number | null>((done) => {
+      job.on("exit", (code) => done(code));
+    });
+    while (!existsSync(`${log}.cleanup`)) {
+      await new Promise((wait) => {
+        setTimeout(wait, 50);
+      });
+    }
 
     agent(["job", "stop", "light"]);
     await exited;

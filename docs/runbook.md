@@ -85,6 +85,29 @@ For callers such as `fflow gate` (this interface is frozen by ADR 0522):
   stops the job on the box and exits 130.
 - **`status --json`** gives each region's free, total and startable heavy and light slots, so the caller sizes its
   parallel jobs.
+- **The old name.** `stackra testbed run` (`@stackra/cli`) takes the same arguments and flags, prints the same JSON
+  line and uses the same codes, so a caller switches by changing the command word: Flow's `runner.run` in
+  `flow.config.json` becomes `["testbed", "run", "{label}", "{dir}", "{command}", "{flags}"]` once `@figentra/testbed`
+  is released and installed where the caller runs.
+
+What each failure looks like to a caller. Each row was probed on eu-west-1 on 2026-11-05, except the last two, which
+are read from the code:
+
+| Situation                                   | Exit    | What happens                                                  |
+| ------------------------------------------- | ------- | ------------------------------------------------------------- |
+| the job fails                               | its own | passed through; the JSON line carries it                      |
+| every slot of the kind busy, `--no-wait`    | 73      | without `--no-wait` it waits, and raises a group with room    |
+| no healthy box, `--no-wait`                 | 75      | without `--no-wait` it raises a group at 0 and waits          |
+| no enabled region answers AWS (bad profile) | 75      | at once, with AWS's reason                                    |
+| Session Manager plugin missing              | 75      | at once, with where it looked                                 |
+| the job's 3-hour limit                      | 124     | container stopped, workspace and protection cleaned up        |
+| Ctrl-C or SIGTERM on the caller             | 130     | the job is stopped on the box and cleaned up (see below)      |
+| SSH-over-SSM drops mid-job                  | its own | the job keeps running; the CLI reattaches up to 3 times       |
+| a light box lost (spot reclaim, exit 255)   | its own | the job is run once more on another box; a heavy job never is |
+
+Until the image built after figentra/stackra#475, a stopped job can leave its `/data/jobs/<id>` and the box's scale-in
+protection behind; the next job on that box clears the protection, and the disk guard removes the folder once `/data`
+is 70% full.
 
 Also:
 
@@ -250,6 +273,27 @@ and one light box per region, about $0.60 an hour a region; with all four region
 most about $1,760 a month with disks, and a normal day is a small part of that. Each region also stores its copy of
 the image, about $12 a month. Every box ends itself after 60 idle minutes, and `testbed run` starts one when its group
 is at 0. The old fleet ran about $1,900 a month.
+
+## Answering fleet questions from live state
+
+Read-only, with the `academorix` profile; each answer comes from AWS, never from this file.
+
+- **Capacity:** `testbed status --json` (every enabled region's free, total and startable slots); one region outside
+  the enabled list: `testbed status --json --regions <region>`.
+- **Image age, every region:** `testbed image` for the home region; for all four,
+  `aws ssm get-parameter --name /imagebuilder/stackra-testbed/ami --region <r>`, then
+  `aws ec2 describe-images --image-ids <ami> --region <r> --query 'Images[0].[Name,CreationDate]'`. The name carries
+  the build time, and it must be the same in every region. Whether the image is current: the pipeline's
+  `imageRecipeArn` (`aws imagebuilder list-image-pipelines --region eu-west-1`) ends in the same version as the AMI's
+  `Ec2ImageBuilderArn` tag; when it doesn't, a `build-image` is due.
+- **Failures:** box launches and stops per group and region,
+  `aws autoscaling describe-scaling-activities --auto-scaling-group-name stackra-testbed-<heavy|light> --region <r>`
+  (a spot `UnfulfillableCapacity` or `InsufficientInstanceCapacity` there is retried by the group); a stuck box,
+  `testbed status` (health, disk, lock holder, image age); a box left protected with no job,
+  `aws autoscaling describe-auto-scaling-instances --instance-ids <id>` (`ProtectedFromScaleIn`).
+- **Cost:** the `service` cost-allocation tag,
+  `aws ce get-cost-and-usage --region us-east-1 --time-period Start=<d>,End=<d> --granularity DAILY --metrics UnblendedCost --filter '{"Tags":{"Key":"service","Values":["testbed"]}}'`.
+  Cost Explorer lags about a day, and each call costs $0.01.
 
 ## Migration from the old fleet
 
