@@ -7,7 +7,8 @@
  *          public IP with the allowlist swap only under `--ssh-direct`; and across regions: the next region when the
  *          first is full, a group raised where there is room, no call outside the enabled list, each box's own region
  *          in its calls, `run --json` (one stdout line, the reserved exit codes), `status` and `status --json`, and
- *          `scale` and `unlock` in the right region.
+ *          `scale` and `unlock` in the right region; without the Session Manager plugin, `run` exits 75 at once and
+ *          `status` says why, and `--ssh-direct` never asks for the plugin.
  * Boundary: test only; nothing starts a process or reaches the network, the claim folder is a throwaway directory.
  * Runtime: node (vitest)
  * Governing contract: ADR 0022 (test placement); ADR 0484.
@@ -85,6 +86,10 @@ function fake(options: {
   /** The clock; each call advances it by this many milliseconds. */
   readonly tick?: number;
   readonly interrupt?: boolean;
+  /** Why the Session Manager plugin cannot be found; `undefined` when it can. */
+  readonly noPlugin?: string;
+  /** The stderr of an ssh call that fails. */
+  readonly sshError?: string;
 }): Fake {
   const calls: string[] = [];
   const streams: string[] = [];
@@ -113,7 +118,7 @@ function fake(options: {
         const box = String(args.at(-2)).split("@")[1] ?? "";
         const remote = String(args.at(-1));
         const answer = options.agent?.(box, remote) ?? defaultAgent(remote);
-        return { ...answer, stderr: "" };
+        return { ...answer, stderr: answer.code === 0 ? "" : (options.sshError ?? "") };
       }
       return { code: 0, stdout: "", stderr: "" };
     },
@@ -138,6 +143,10 @@ function fake(options: {
       return () => {
         onInterrupt = undefined;
       };
+    },
+    ssmPlugin: async () => {
+      calls.push("ssm-plugin");
+      return options.noPlugin;
     },
   };
   return { deps, calls, streams };
@@ -233,6 +242,29 @@ describe("runTestbed run", () => {
     expect(calls).toContain(rule("revoke", "203.0.113.7/32"));
     expect(streams[0]).toContain("ubuntu@ip-i-1:/data/jobs/x/app/");
     expect(streams.join("\n")).not.toContain("ProxyCommand");
+  });
+
+  it("exits 75 at once, saying why, when the Session Manager plugin cannot be found", async () => {
+    const { deps, calls, streams } = fake({
+      boxes: instances(["i-1", "light", "2026-10-30T00:00:00Z"]),
+      noPlugin: "no plugin here",
+    });
+    const { io, output } = captureIo();
+    expect(await runTestbed(request({}), deps, io)).toBe(75);
+    expect(output()).toContain("no plugin here");
+    expect(calls.filter((call) => call.startsWith("ssh ") || call.startsWith("aws "))).toEqual([]);
+    expect(streams).toEqual([]);
+  });
+
+  it("asks for the Session Manager plugin once per run, and never under --ssh-direct", async () => {
+    const box = instances(["i-1", "light", "2026-10-30T00:00:00Z"]);
+    const ssm = fake({ boxes: box });
+    expect(await runTestbed(request({}), ssm.deps, captureIo().io)).toBe(0);
+    expect(ssm.calls.filter((call) => call === "ssm-plugin")).toHaveLength(1);
+    const direct = fake({ boxes: box, noPlugin: "no plugin here", ip: "198.51.100.9" });
+    const settings = { ...request({}).settings, sshDirect: true };
+    expect(await runTestbed(request({ settings }), direct.deps, captureIo().io)).toBe(0);
+    expect(direct.calls).not.toContain("ssm-plugin");
   });
 
   it("picks another box when the first answers 75", async () => {
@@ -610,6 +642,25 @@ describe("runTestbed status", () => {
     expect(text).toContain("a: heavy 1/1 free (+0 startable), light 0/1 free (+1 startable)");
     expect(text).toContain("box 1 i-h heavy (a): status of i-h");
     expect(text).toContain("b: unreachable");
+  });
+
+  it("says why a box did not answer, and that the Session Manager plugin is missing", async () => {
+    const { deps } = fake({
+      boxes: { a: instances(heavyBox) },
+      agent: () => ({ code: 255, stdout: "" }),
+      group: "1\t1\t0\n",
+      noPlugin: "no plugin here",
+      sshError:
+        "aws: [ERROR]: SessionManagerPlugin is not found.\nConnection closed by UNKNOWN port 65535\n",
+    });
+    const { io, out, err } = splitIo();
+    expect(
+      await runTestbed(request({ verb: "status", args: [], settings: over("a") }), deps, io),
+    ).toBe(0);
+    expect(err.join("")).toContain("no plugin here");
+    expect(out.join("")).toContain(
+      "box 1 i-h heavy (a): unreachable (Connection closed by UNKNOWN port 65535)",
+    );
   });
 });
 
