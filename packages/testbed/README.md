@@ -26,7 +26,7 @@ testbed status [--json]
 
 | Part    | Value                                                                                                                                                    |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Region  | `eu-west-1` today (`TESTBED_DEFAULTS.enabledRegions`); one stack per region, four planned (STA-2042)                                                     |
+| Region  | eu-west-1, eu-west-2, eu-central-1, us-east-1, in that order (`TESTBED_DEFAULTS.enabledRegions`); one stack per region (STA-2042)                        |
 | `heavy` | on-demand `c7i.2xlarge`, min 0, max 1, slots heavy and light (8 vCPU on-demand quota, ADR 0516)                                                          |
 | `light` | spot across `c7i`, `c6i`, `m7i` `.2xlarge` with capacity rebalancing, min 0, max 1, slot light (8 vCPU spot quota)                                       |
 | Disks   | 40 GB gp3 root; 200 GB gp3 XFS (reflink) at `/data`; both deleted with the instance                                                                      |

@@ -33,7 +33,7 @@ const list = (value: string | boolean | undefined): readonly string[] | undefine
  *              `STACKRA_TESTBED_SSH_KEY`).
  * @param home - the home directory the default key file lives under.
  * @example
- * resolveTestbedSettings({}, {}, "/Users/me").regions; // ["eu-west-1", "eu-west-2", "eu-central-1"]
+ * resolveTestbedSettings({}, {}, "/Users/me").regions; // ["eu-west-1", "eu-west-2", "eu-central-1", "us-east-1"]
  */
 export function resolveTestbedSettings(
   values: Readonly<Record<string, string | boolean | undefined>>,

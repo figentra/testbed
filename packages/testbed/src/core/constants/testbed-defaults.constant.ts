@@ -19,9 +19,9 @@ export const TESTBED_DEFAULTS = {
   /**
    * The regions the CLI uses today, in `regions` order; `regions` stays the full list the plan accepts (STA-2042). A
    * region whose groups do not exist yet has no box and no group to raise, so it is skipped until its `up` has run.
-   * us-east-1 joins once box 1 stops (runbook step 30): until then its on-demand quota is box 1's.
+   * us-east-1 is last: it joined once box 1 stopped for good (runbook step 30), whose on-demand quota it shared.
    */
-  enabledRegions: ["eu-west-1", "eu-west-2", "eu-central-1"],
+  enabledRegions: ["eu-west-1", "eu-west-2", "eu-central-1", "us-east-1"],
   /** The home region's stack owns the global IAM roles, the build bucket and the image pipeline. */
   homeRegion: "eu-west-1",
   /** The instance role and profile every region's boxes use; the home stack declares both (IAM is global). */
