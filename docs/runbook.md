@@ -63,8 +63,8 @@ its exit code. The job runs detached on the box and the CLI follows its log: whe
 up to three times, 10 s apart, and exits with the job's code. Ctrl-C stops the job on the box.
 
 The enabled regions are `TESTBED_DEFAULTS.enabledRegions` in
-`packages/testbed/src/core/constants/testbed-defaults.constant.ts`: eu-west-1, eu-west-2 and eu-central-1 (a region
-whose groups do not exist yet is skipped). us-east-1 joins once box 1 stops.
+`packages/testbed/src/core/constants/testbed-defaults.constant.ts`: eu-west-1, eu-west-2, eu-central-1 and us-east-1
+(a region whose groups do not exist yet is skipped).
 `--regions a,b` or `STACKRA_TESTBED_REGIONS` overrides it for one machine, and `--region r` narrows it to one region.
 The other verbs:
 
@@ -247,6 +247,11 @@ the image, about $12 a month. Every box ends itself after 60 idle minutes, and `
 is at 0. The old fleet ran about $1,900 a month.
 
 ## Migration from the old fleet
+
+> [!NOTE]
+> Done on 2026-11-06 (owner): box 1, the last old box, is terminated, as are the old ci-box and testbed AMIs, their
+> snapshots and the four `academorix-ci` security groups. `ci-box` is the shim with no legacy fallback. The key pair
+> `academorix-ci` stays: the testbed boxes use it. The steps below are the record.
 
 The tester keeps using the eight old boxes until the new pool has passed the same work. Every step is a separate owner
 yes ([plan](../.agents/specs/sta-1626-testbed/plan.md)).
