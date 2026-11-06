@@ -60,8 +60,9 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
-    # figentra/stackra's Runway npm provider at the commit figentra/flow pins. Bump the SHA deliberately, never to a branch.
-    uses: figentra/stackra/.github/workflows/runway-npm.yml@31faaac481d2bed76bfe5f20976da1d40aa6a345
+    # figentra/stackra's Runway npm provider, pinned to a full commit (stackra#504: published list as an artifact, SBOM
+    # from pnpm sbom). Bump the SHA deliberately, never to a branch.
+    uses: figentra/stackra/.github/workflows/runway-npm.yml@dd091834c6d8f1235c3c4dcaa8a558cd63a4632c
     with:
       environment: release
       build-args: --filter=@figentra/testbed
