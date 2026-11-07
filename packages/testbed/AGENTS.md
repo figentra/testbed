@@ -42,8 +42,9 @@ The testbed (ADR 0484): the Pulumi program part, the box agent, the images and t
 - The Pulumi program takes core's lockfile from the `lockfilePath` config (the workflow's sparse checkout of
   figentra/stackra); there is no fallback path.
 - `.` never imports `@pulumi/*` or `node:*`.
-- No secret value anywhere: not in user data, not in a component, not on a command line, not in a log (ADR 0173). The
-  Infisical token is a shell variable in the agent and reaches the container by `-e INFISICAL_TOKEN`.
+- No secret value anywhere: not in user data, not in a component, not on a command line, not in a log (ADR 0173). A job's
+  decrypted values are shell variables in the agent and reach the container by `-e NAME`; the ciphertext folder is
+  removed before the job starts (ADR 0525).
 - Heavy is on-demand; spot is for `light` only. Both disks are deleted with the instance. IMDS stays one hop and
   IMDSv2 required, so a job container cannot read the instance role.
 - Widening the instance policy needs a security review. Workflow or promotion changes need the owner.

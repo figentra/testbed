@@ -15,8 +15,8 @@
 # Owner: release-operations
 # Secrets: none. AWS access is GitHub OIDC into the role in the `testbed` environment variable TESTBED_DEPLOY_ROLE_ARN
 #          (trusts this repository's `testbed` environment, and figentra/stackra's until the cut-over, ADR 0522). The
-#          stack config is ids, CIDRs and a path, no secret, so the Pulumi passphrase is empty by design. The Infisical
-#          ids come from the organization variables.
+#          stack config is a region, CIDRs and a path, no secret, so the Pulumi passphrase is empty by design. Stacks
+#          applied before STA-2146 still hold the retired `identityId` and `ciGateProjectId` keys; nothing reads them.
 #          The figentra/stackra checkout is public and read-only, with no credential.
 name: Apply testbed
 
@@ -77,8 +77,6 @@ jobs:
       AWS_REGION: eu-west-1
       ROLE_ARN: ${{ vars.TESTBED_DEPLOY_ROLE_ARN }}
       SSH_CIDRS: ${{ vars.TESTBED_SSH_CIDRS }}
-      IDENTITY_ID: ${{ vars.INFISICAL_GATE_IDENTITY_ID }}
-      PROJECT_ID: ${{ vars.INFISICAL_GATE_PROJECT_ID }}
       # Optional: the permissions boundary the program sets on the roles it creates (notes testbed-boundary draft).
       PERMISSIONS_BOUNDARY: ${{ vars.TESTBED_PERMISSIONS_BOUNDARY_ARN }}
       STATE_BUCKET: stackra-pulumi-state-591473336656
@@ -180,8 +178,6 @@ jobs:
             fi
           fi
           pulumi config set region "$REGION"
-          pulumi config set identityId "$IDENTITY_ID"
-          pulumi config set ciGateProjectId "$PROJECT_ID"
           pulumi config set lockfilePath "$GITHUB_WORKSPACE/core/pnpm-lock.yaml"
           # TESTBED_SSH_CIDRS is optional: a comma-separated port-22 allowlist for `testbed --ssh-direct` only.
           # Unset, the boxes have no inbound rule and the CLI reaches them through SSM Session Manager (STA-1953).

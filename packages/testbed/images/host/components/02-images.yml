@@ -20,7 +20,7 @@ phases:
               cd /opt/testbed-build
               docker build -t stackra-testbed-job:current \
                 --build-arg MISE_VERSION=@@MISE@@ --build-arg NODE_VERSION=@@NODE@@ --build-arg PNPM_VERSION=@@PNPM@@ \
-                --build-arg INFISICAL_VERSION=@@INFISICAL@@ --build-arg SHFMT_VERSION=@@SHFMT@@ \
+                --build-arg SHFMT_VERSION=@@SHFMT@@ \
                 --build-arg ENCORE_VERSION=@@ENCORE@@ --build-arg PLAYWRIGHT_VERSION=@@PLAYWRIGHT@@ - < Dockerfile
       - name: PostgresImage
         action: ExecuteBash
@@ -39,7 +39,6 @@ phases:
               docker run --rm stackra-testbed-job:current sh -euc '
                 node --version | grep -qx "v@@NODE@@"
                 pnpm --version | grep -qx "@@PNPM@@"
-                infisical --version | grep -q "@@INFISICAL@@"
                 shfmt --version | grep -q "@@SHFMT@@"
                 encore version | grep -q "@@ENCORE@@"
                 git --version && zip -v >/dev/null && unzip -v >/dev/null && rsync --version >/dev/null

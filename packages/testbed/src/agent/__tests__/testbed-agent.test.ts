@@ -1,10 +1,11 @@
 /**
  * Testbed file contract:
- * Purpose: unit tests of `testbed-agent.sh` against stubbed docker, aws, infisical, pnpm and df on PATH: the 70%
+ * Purpose: unit tests of `testbed-agent.sh` against stubbed docker, aws, gcloud, sops, pnpm and df on PATH: the 70%
  *          cleanup (finished job folders, stale seeds, dangling images), the 85% refusal (exit 75, `unhealthy: disk`)
  *          and the drain (an unhealthy mark only with no job running), a busy slot (exit 73), cleanup and scale-in
- *          protection released after a failing job, the Infisical token reaching the container by environment and
- *          never by a command line, a project without grants getting no token, seed clone and seed refresh, and the
+ *          protection released after a failing job, each granted scope's values reaching the container by name and
+ *          never by a command line, the ciphertext folder removed, a name that would shadow a variable refused, a
+ *          project without grants getting no value, the Google health check, seed clone and seed refresh, and the
  *          idle stop above the group's minimum only; a spot reclaim or rebalance notice refusing new jobs (exit 75).
  * Boundary: test only; every path is a temp folder and every tool a stub, so no cloud, container or secret is
  *           touched. The agent needs `sh`, `jq`, `rsync`, `flock`, GNU `find`, `stat`, `cp` and `timeout`, so this runs
@@ -18,6 +19,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -45,8 +47,8 @@ function stub(name: string, body: string): void {
   chmodSync(join(dir("bin"), name), 0o755);
 }
 
-// A box job runs these tests under `infisical run` with a real Infisical token (core's grants): the agent under test
-// must never inherit it, or a failing assertion prints it.
+// A box job runs these tests with core's granted values in its environment: the agent under test must never inherit
+// one, or a failing assertion prints it.
 const inherited = Object.fromEntries(
   Object.entries(process.env).filter(([name]) => !/TOKEN|SECRET|PASSWORD|_KEY$/.test(name)),
 ) as Record<string, string>;
@@ -64,7 +66,7 @@ function env(extra: Record<string, string> = {}): Record<string, string> {
     TESTBED_INSTANCE_ID: "i-test",
     TESTBED_AMI_ID: "ami-test",
     TESTBED_REGION: "eu-west-1",
-    // The job container has the real infisical and pnpm under /opt/mise/shims; the stubs must win there too.
+    // The job container has the real pnpm under /opt/mise/shims; the stubs must win there too.
     TESTBED_MISE_SHIMS: dir("bin"),
     FAKE_LOG: log,
     FAKE_DF_DATA: "10",
@@ -82,17 +84,18 @@ function logged(): string {
   return existsSync(log) ? readFileSync(log, "utf8") : "";
 }
 
+/** The agent's private folders (ciphertext, gcloud state) left in its state directory. */
+function leftovers(): string[] {
+  return readdirSync(dir("state")).filter((name) => /^(secrets|gcloud)\./.test(name));
+}
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "testbed-agent-"));
   log = dir("calls.log");
   for (const name of ["data", "rootfs", "state", "etc"]) mkdirSync(dir(name), { recursive: true });
   writeFileSync(dir("meminfo"), "MemAvailable:   8000000 kB\n");
   writeFileSync(dir("loadavg"), "0.50 0.40 0.30 1/100 1\n");
-  writeFileSync(dir("etc/identity"), "identity-id-1\n");
-  writeFileSync(
-    dir("etc/grants.json"),
-    JSON.stringify({ core: [{ projectId: "proj1", environment: "prod", path: "/ci/turbo" }] }),
-  );
+  writeFileSync(dir("etc/grants.json"), JSON.stringify({ core: ["ci/build/turbo"] }));
   stub(
     "df",
     `for a; do d=$a; done
@@ -104,7 +107,7 @@ echo "x 1 1 $kb \${pct}% $d"`,
     "docker",
     `echo "docker $*" >> "$FAKE_LOG"
 case "$1" in
-  run) case "$*" in *stackra-testbed-job*) echo "INFISICAL_TOKEN=\${INFISICAL_TOKEN:-}" >> "$FAKE_LOG.env"; echo "job output"; exit "\${FAKE_RUN_RC:-0}" ;; esac ;;
+  run) case "$*" in *stackra-testbed-job*) echo "TURBO_TOKEN=\${TURBO_TOKEN:-} FIGENTRA_REGISTRY_TOKEN=\${FIGENTRA_REGISTRY_TOKEN:-}" >> "$FAKE_LOG.env"; echo "job output"; exit "\${FAKE_RUN_RC:-0}" ;; esac ;;
 esac
 exit 0`,
   );
@@ -117,13 +120,30 @@ case "$*" in
 esac
 exit 0`,
   );
+  // gcloud: a token on stdout (unless Google is down), and one fake ciphertext file per scope's names.
   stub(
-    "infisical",
-    `echo "infisical $*" >> "$FAKE_LOG"
-case "$1" in
-  login) echo ${TOKEN} ;;
-  run) while [ "$1" != -- ]; do shift; done; shift; exec "$@" ;;
+    "gcloud",
+    `echo "gcloud $* (config $CLOUDSDK_CONFIG, credentials $CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE)" >> "$FAKE_LOG"
+case "$1 $2" in
+  "auth print-access-token") [ -z "\${FAKE_GOOGLE_DOWN:-}" ] || exit 1; echo ${TOKEN} ;;
+  "storage cp")
+    prefix=\${3#gs://*/}
+    case \${prefix%%/*} in
+      ci.build.turbo) names=TURBO_TOKEN ;;
+      ci.build.registry) names=FIGENTRA_REGISTRY_TOKEN ;;
+      *) names=\${FAKE_NAMES:-UNIWIND_AUTH_TOKEN} ;;
+    esac
+    for n in $names; do echo ciphertext > "$4$n.enc.yaml"; done ;;
 esac`,
+  );
+  // sops: the file must be there; its value is the token followed by the file's name.
+  stub(
+    "sops",
+    `echo "sops $* (credentials $GOOGLE_APPLICATION_CREDENTIALS)" >> "$FAKE_LOG"
+for f; do :; done
+[ -f "$f" ] || exit 1
+name=\${f##*/}
+echo "${TOKEN}-\${name%.enc.yaml}"`,
   );
   stub("pnpm", `echo "pnpm $* (in $PWD)" >> "$FAKE_LOG"`);
   // IMDS: a token always; the spot notices only when the test sets them (404, so curl -f fails, otherwise).
@@ -150,6 +170,12 @@ describe("testbed-agent excludes", () => {
     for (const kept of [".agents", ".github", ".flow"]) {
       expect(TESTBED_DEFAULTS.rsyncExcludes).not.toContain(kept);
     }
+  });
+
+  it("reads the contract's ciphertext bucket", () => {
+    expect(readFileSync(AGENT, "utf8")).toContain(
+      `SECRETS_BUCKET=\${TESTBED_SECRETS_BUCKET:-${TESTBED_DEFAULTS.secretsBucket}}`,
+    );
   });
 });
 
@@ -239,6 +265,25 @@ describe("testbed-agent health", () => {
     expect(logged()).not.toContain("docker run");
   });
 
+  it("checks that Google issues the instance role a token, and never prints it", () => {
+    const down = agent(["health"], { FAKE_GOOGLE_DOWN: "1" });
+    expect(down.code).toBe(1);
+    expect(down.out.trim()).toBe("unhealthy: google");
+
+    const up = agent(["health"]);
+    expect(up.out + up.err).not.toContain(TOKEN);
+    expect(logged()).toMatch(
+      /gcloud auth print-access-token \(config \S+\/state\/gcloud\.\S+, credentials \S+\/etc\/google-credentials\.json\)/,
+    );
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("asks Google nothing on a box without grants", () => {
+    rmSync(dir("etc/grants.json"));
+    expect(agent(["health"], { FAKE_GOOGLE_DOWN: "1" }).out.trim()).toBe("healthy");
+    expect(logged()).not.toContain("gcloud");
+  });
+
   it("reports healthy and one status line", () => {
     expect(agent(["health"]).out.trim()).toBe("healthy");
     const status = agent(["status"]).out.trim();
@@ -317,7 +362,7 @@ exit 0`,
     expect(logged()).toContain("--no-protected-from-scale-in");
   });
 
-  it("hands the Infisical token to the container by environment, never on a command line", () => {
+  it("hands each granted value to the container by name, never on a command line", () => {
     agent(["job", "prepare", "j4", "core"]);
     writeFileSync(dir("data/jobs/j4/core/pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
     const run = agent(["job", "run", "j4", "light", "me", "core", "--", "echo hi"]);
@@ -343,41 +388,61 @@ exit 0`,
     expect(logged()).toContain("-e UNIWIND_CACHE_DIR=/pnpm-cache/uniwind");
     expect(logged()).not.toContain(TOKEN);
     expect(run.out + run.err).not.toContain(TOKEN);
-    expect(readFileSync(`${log}.env`, "utf8")).toContain(`INFISICAL_TOKEN=${TOKEN}`);
-    expect(logged()).toMatch(/-e INFISICAL_TOKEN( |$)/m);
-    expect(logged()).toContain(
-      "infisical run --silent --projectId proj1 --env prod --path /ci/turbo",
+    // The scope's ciphertext from its flat prefix, decrypted by name, as the instance role.
+    expect(logged()).toMatch(
+      /gcloud storage cp gs:\/\/figentra-secrets-ciphertext\/ci\.build\.turbo\/\*\.enc\.yaml \S+\/state\/secrets\.\S+\/ci\.build\.turbo\/ \(config \S+, credentials \S+\/etc\/google-credentials\.json\)/,
     );
+    expect(logged()).toMatch(
+      /sops decrypt --extract \["TURBO_TOKEN"\] \S+\/TURBO_TOKEN\.enc\.yaml \(credentials \S+\/etc\/google-credentials\.json\)/,
+    );
+    expect(readFileSync(`${log}.env`, "utf8")).toContain(`TURBO_TOKEN=${TOKEN}-TURBO_TOKEN `);
+    expect(logged()).toMatch(/-e TURBO_TOKEN( |$)/m);
+    expect(leftovers()).toEqual([]);
     expect(logged()).toContain("echo hi");
   });
 
   it("gives every project the `*` grants, and pnpm the registry token through the repository's .npmrc", () => {
     writeFileSync(
       dir("etc/grants.json"),
-      JSON.stringify({
-        core: [{ projectId: "proj1", environment: "prod", path: "/ci/turbo" }],
-        "*": [{ projectId: "proj1", environment: "prod", path: "/ci/registry" }],
-      }),
+      JSON.stringify({ core: ["ci/build/turbo"], "*": ["ci/build/registry"] }),
     );
     const run = agent(["job", "run", "j7", "light", "me", "pay", "--", "echo hi"]);
 
     expect(run.code).toBe(0);
-    expect(readFileSync(`${log}.env`, "utf8")).toContain(`INFISICAL_TOKEN=${TOKEN}`);
-    expect(logged()).toContain("--path /ci/registry");
-    expect(logged()).not.toContain("--path /ci/turbo");
+    expect(readFileSync(`${log}.env`, "utf8")).toContain(
+      `FIGENTRA_REGISTRY_TOKEN=${TOKEN}-FIGENTRA_REGISTRY_TOKEN`,
+    );
+    expect(logged()).toMatch(/-e FIGENTRA_REGISTRY_TOKEN( |$)/m);
+    expect(logged()).toContain("/ci.build.registry/");
+    expect(logged()).not.toContain("ci.build.turbo");
     // Both token names, read from either, and the repository's .npmrc as pnpm's auth file; no value on a line.
     expect(logged()).toContain("PNPM_CONFIG_NPMRC_AUTH_FILE=$PWD/.npmrc");
     expect(logged()).toContain("${FIGENTRA_REGISTRY_TOKEN:-${STACKRA_REGISTRY_TOKEN:-}}");
     expect(logged()).not.toContain(TOKEN);
   });
 
-  it("gives a project without grants no token", () => {
+  it("gives a project without grants no value", () => {
     const run = agent(["job", "run", "j5", "light", "me", "other", "--", "true"]);
 
     expect(run.code).toBe(0);
-    expect(readFileSync(`${log}.env`, "utf8").trim()).toBe("INFISICAL_TOKEN=");
-    expect(logged()).not.toContain("infisical login");
-    expect(logged()).not.toContain("-e INFISICAL_TOKEN");
+    expect(readFileSync(`${log}.env`, "utf8").trim()).toBe("TURBO_TOKEN= FIGENTRA_REGISTRY_TOKEN=");
+    expect(logged()).not.toContain("gcloud");
+    expect(logged()).not.toContain("sops");
+    expect(logged()).not.toContain("-e TURBO_TOKEN");
+  });
+
+  it("refuses a secret whose name would replace a variable (exit 75), and removes the ciphertext", () => {
+    writeFileSync(dir("etc/grants.json"), JSON.stringify({ core: ["ci/build"] }));
+    const run = agent(["job", "run", "j8", "light", "me", "core", "--", "true"], {
+      FAKE_NAMES: "PATH",
+    });
+
+    expect(run.code).toBe(75);
+    expect(run.out).toContain("unhealthy: secrets");
+    expect(logged()).not.toContain("stackra-testbed-job");
+    expect(logged()).not.toContain("sops");
+    expect(leftovers()).toEqual([]);
+    expect(agent(["slot", "light"]).out.trim()).toBe("free");
   });
 
   it("clones the seed, then refreshes it from the workspace without node_modules or env files", () => {

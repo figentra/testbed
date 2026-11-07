@@ -2,7 +2,7 @@
  * Testbed file contract:
  * Purpose: unit tests of `testbedPlan`: two disks with the 200 GB XFS volume at `/data`, both deleted with the
  *          instance; `heavy` on-demand and spot only on `light`; one region; the owner's counts and instance types;
- *          the region's vCPU quotas and the refusal of a plan above them (ADR 0516); the guard, idle and image numbers; grants only when a project id is given and no secret value anywhere;
+ *          the region's vCPU quotas and the refusal of a plan above them (ADR 0516); the guard, idle and image numbers; the figentra/secrets scopes granted and no secret value anywhere;
  *          bad input refused; the toolchain pins equal core's `mise.toml` and catalogue.
  * Boundary: test only; calls no cloud. The pin test reads `mise.toml` and `pnpm-workspace.yaml` from a checkout of
  *           figentra/stackra named by `CORE_CHECKOUT` (the daily testbed-image job sets it) and is skipped without it.
@@ -25,7 +25,7 @@ function coreFile(name: string): string {
 }
 
 describe("testbedPlan", () => {
-  const plan = testbedPlan({ identityId: "id-1", ciGateProjectId: "proj-1" });
+  const plan = testbedPlan();
 
   it("has two disks, the data volume XFS at /data, both deleted with the instance", () => {
     expect(plan.disks.root).toMatchObject({ sizeGb: 40, type: "gp3" });
@@ -101,20 +101,16 @@ describe("testbedPlan", () => {
     expect(() => testbedPlan({ region: "eu-west-2", heavy: { min: 1, max: 1 } })).not.toThrow();
   });
 
-  it("grants figentra-ci paths to the core project and the registry path to every project, ids only", () => {
-    expect(plan.secretGrants.projects.core).toEqual([
-      { projectId: "proj-1", environment: "prod", path: "/ci" },
-      { projectId: "proj-1", environment: "prod", path: "/ci/turbo" },
-    ]);
-    expect(
-      testbedPlan({ identityId: "id-1", ciGateProjectId: "proj-1", turboProjectId: "proj-2" })
-        .secretGrants.projects.core?.[1],
-    ).toEqual({ projectId: "proj-2", environment: "prod", path: "/ci/turbo" });
-    expect(plan.secretGrants.projects["*"]).toEqual([
-      { projectId: "proj-1", environment: "prod", path: "/ci/registry" },
-    ]);
-    expect(plan.secretGrants.identityName).toBe("gate");
-    expect(testbedPlan().secretGrants.projects).toEqual({});
+  it("grants core CI's build scopes and every project the registry scope, names only", () => {
+    expect(plan.secretGrants.projects).toEqual({
+      core: ["ci/build", "ci/build/turbo"],
+      "*": ["ci/build/registry"],
+    });
+    expect(plan.secretGrants.workloadIdentityProvider).toBe(
+      "projects/330719355948/locations/global/workloadIdentityPools/github/providers/testbed",
+    );
+    // The Infisical inputs are gone; an old caller passing one is refused.
+    expect(() => testbedPlan({ ciGateProjectId: "proj-1" } as never)).toThrow();
   });
 
   it("refuses spot for heavy, a minimum above the maximum and a bad region", () => {
@@ -127,7 +123,7 @@ describe("testbedPlan", () => {
     const mise = coreFile("mise.toml");
     expect(mise).toContain(`node = "${TOOLCHAIN_PINS.node}"`);
     expect(mise).toContain(`pnpm = "${TOOLCHAIN_PINS.pnpm}"`);
-    expect(mise).toContain(`"github:Infisical/cli" = "${TOOLCHAIN_PINS.infisical}"`);
+    expect(mise).toContain(`"aqua:getsops/sops" = "${TOOLCHAIN_PINS.sops}"`);
     expect(mise).toContain(`shfmt = "${TOOLCHAIN_PINS.shfmt}"`);
     expect(coreFile("pnpm-workspace.yaml")).toContain(
       `"@playwright/test": ${TOOLCHAIN_PINS.playwright}`,

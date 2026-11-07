@@ -41,12 +41,12 @@ profile `figentra`.
 | Part      | What it is                                                                                                                                                                                                                |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Regions   | One pool in each of eu-west-1 (the home), eu-west-2, eu-central-1 and us-east-1, one Pulumi stack each (`testbed-<region>`); the CLI uses only the regions in its enabled list, in that order (STA-2042)                  |
-| Image     | One Dockerfile for the job toolchain (mise, Node, pnpm, Encore, Playwright, Infisical) and one EC2 Image Builder AMI, built in the home region and copied to every region                                                 |
+| Image     | One Dockerfile for the job toolchain (mise, Node, pnpm, Encore, Playwright) and one EC2 Image Builder AMI (adding sops and the Google Cloud CLI on the host), built in the home region and copied to every region         |
 | Groups    | `heavy`: on-demand `c7i.2xlarge`, 0 to 1 box. `light`: spot `c7i`/`c6i`/`m7i.2xlarge`, 0 to 1 box (the region's 8 + 8 vCPU quotas, ADR 0516)                                                                              |
 | Disks     | 40 GB root (OS and images); 200 GB XFS data volume at `/data` (jobs, seeds, pnpm store, turbo cache, Docker)                                                                                                              |
 | Slots     | One heavy and one light job per box. Heavy: `encore test`, `playwright`, `e2e`, `act `, `build`, or `--on-demand`. Everything else: light. A light box with a spot reclaim or rebalance notice refuses new jobs (exit 75) |
 | Jobs      | A fresh container per job, workspace `/data/jobs/<id>`, read-only pnpm store, optional Postgres; all deleted after                                                                                                        |
-| Secrets   | Fetched per job from Infisical by the instance role (the shared gate identity). There is no token file                                                                                                                    |
+| Secrets   | Decrypted per job from figentra/secrets (sops, Cloud KMS) by the instance role through Google Workload Identity. There is no token file                                                                                   |
 | Box agent | `testbed-agent` on every box: health, slots, the disk guard and the idle check                                                                                                                                            |
 
 ## Running work
@@ -240,18 +240,24 @@ Repeat with `stackra-testbed-light`, and in each region that runs boxes (`--regi
 
 ## Secrets
 
-- Each box authenticates to Infisical by AWS IAM auth, as the shared gate identity (`INFISICAL_GATE_IDENTITY_ID`, the
-  one the Quality Gate uses over GitHub OIDC). AWS Auth sits beside its OIDC auth; no new identity is created.
-- At job start the agent gets a token that lives for the job's timeout. The container runs the command under
-  `infisical run`. No value touches a disk, a log or a command line.
-- Which project paths a job may read is `secretGrants` in `@figentra/testbed`, reviewed like code. The identity's
-  permissions in Infisical are the real limit. Core gets `prod` `/ci` and `/ci/turbo`; every project, through the
-  `*` key, gets `prod` `/ci/registry`, the registry read token, so a product's install of `@figentra/*` works.
+- Secrets live in figentra/secrets as sops files, one per name, keyed by Cloud KMS (ADR 0525). Each box signs in to
+  Google as its instance role, `stackra-testbed-instance`, through the Workload Identity provider `testbed` that
+  figentra/infra's `stacks/secrets` declares. The file that says how, `/etc/testbed/google-credentials.json`, is
+  written by user data and holds no secret: the box's AWS credentials are read from IMDSv2 at each use.
+- At job start the agent copies each granted scope's `<NAME>.enc.yaml` from `gs://figentra-secrets-ciphertext/`
+  (prefix: the scope with `/` as `.`) into a private folder on `/run`, decrypts each in memory with sops, removes the
+  folder, and passes each value to the container by name (`-e NAME`). No value touches a disk, a log or a command
+  line. `testbed-agent health` reports `unhealthy: google` when Google issues the role no token.
+- Which scopes a job may read is `secretGrants` in `@figentra/testbed`, reviewed like code. figentra/infra's grant to
+  the role is the real limit (object read on those three prefixes, decrypt with the `ci-build` key). Core gets
+  `ci/build` and `ci/build/turbo`; every project, through the `*` key, gets `ci/build/registry`, the registry read
+  token, so a product's install of `@figentra/*` works.
 - pnpm 12 expands no variable in a repository's `.npmrc`, so the agent hands the token to pnpm under both names
   (`FIGENTRA_REGISTRY_TOKEN`, and `STACKRA_REGISTRY_TOKEN` until the registry move retires it) and points
   `PNPM_CONFIG_NPMRC_AUTH_FILE` at the repository's own `.npmrc`. The token stays in the job's environment.
-- `ci-box put-env` and `~/.ci-env` are retired. A missing token is fixed in Infisical, by the owner. To rotate the
-  identity's auth, see [Token rotation][token-rotation] in figentra/stackra.
+- `ci-box put-env` and `~/.ci-env` are retired. A missing token is added to figentra/secrets (`pnpm secrets:put` in
+  figentra/stackra), by the owner; its mirror sync makes it reach the next job. See [Token rotation][token-rotation]
+  in figentra/stackra.
 
 ## When no box is healthy
 
@@ -305,7 +311,8 @@ Read-only, with the `figentra` profile; each answer comes from AWS, never from t
 The tester keeps using the eight old boxes until the new pool has passed the same work. Every step is a separate owner
 yes ([plan](../.agents/specs/sta-1626-testbed/plan.md)).
 
-1. **Infisical.** The owner adds AWS Auth to the shared gate identity, bound to the testbed instance role.
+1. **Secrets.** The owner adds AWS Auth to the shared gate identity, bound to the testbed instance role (since
+   STA-2146: figentra/infra's Google `testbed` provider instead, see Step 1 below).
 2. **Stand up beside.** The `apply-testbed.yml` workflow in eu-west-1 (Step 2 below): the image pipeline, the first
    AMI, both groups 0 to 1. The old eu-west-1 boxes 1 and 2 must be **stopped** first: they hold the region's whole
    on-demand and spot quota while running, and stopped instances count against neither. `ci-box` skips them since
@@ -322,40 +329,17 @@ yes ([plan](../.agents/specs/sta-1626-testbed/plan.md)).
 
 Rollback before the last step: the shim still names the old boxes, and `aws ec2 start-instances` brings them back.
 
-## Step 1 in detail: AWS Auth on the gate identity
+## Step 1 in detail: the Google side (STA-2146)
 
-The boxes use the shared machine identity `figentra-ci-gate`, the one the Quality Gate uses over GitHub OIDC (its id is
-the GitHub organization variable `INFISICAL_GATE_IDENTITY_ID`). It already has **Viewer** on the Infisical project
-`ci-build` (renamed from `figentra-ci-gate`, same id), which holds exactly what a job needs: `prod` `/ci`
-(`UNIWIND_AUTH_TOKEN`) and `prod` `/ci/turbo` (`TURBO_TOKEN`, `TURBO_REMOTE_CACHE_SIGNATURE_KEY`). The Figentra Flow
-gate key is not here: it lives in the project `flow`, read only by the `figentra-flow-box` identity through
-figentra-flow's poster, and no job grant names it. The project is the boundary; the free plan has no custom roles.
-Nothing is created: one login method is added, so no identity slot is spent. The owner does this in the Infisical web
-app (EU, `eu.infisical.com`); no value is typed anywhere. AWS Auth is bound to the instance role, not to a repository,
-so the move to this repository changes nothing here.
+Until STA-2146 the boxes used AWS Auth on the Infisical gate identity. Now figentra/infra's `stacks/secrets` declares
+it, applied by the owner there: the Workload Identity provider `testbed` (AWS type, this account, only the
+`stackra-testbed-instance` role), object read on the mirror prefixes `ci.build`, `ci.build.turbo` and
+`ci.build.registry` for that role's principal set, and decrypt with the `ci-build` key. Nothing is set here: the
+provider's name is `TESTBED_DEFAULTS.googleProvider`, and user data writes the credentials file from it.
 
-1. Organization, **Access Control**, **Machine Identities**, then open `figentra-ci-gate`.
-2. In **Authentication**, leave **OIDC Auth** exactly as it is (CI depends on it) and choose **Add auth method**,
-   **AWS Auth**.
-3. Fill in:
-
-   | Field                           | Value                                                                      |
-   | ------------------------------- | -------------------------------------------------------------------------- |
-   | Allowed Principal ARNs          | `arn:aws:iam::591473336656:role/stackra-testbed-instance`                  |
-   | Allowed Account IDs             | `591473336656`                                                             |
-   | STS Endpoint                    | leave the default `https://sts.amazonaws.com/`                             |
-   | Access Token TTL                | `14400` (4 hours: covers the 3-hour job timeout, with the fetch before it) |
-   | Access Token Max TTL            | `14400`                                                                    |
-   | Access Token Max Number of Uses | `0`                                                                        |
-   | Access Token Trusted IPs        | leave `0.0.0.0/0` (boxes have changing public IPs)                         |
-
-4. Save. The identity page now lists two auth methods, OIDC Auth and AWS Auth.
-
-These settings belong to the AWS Auth method only; CI's OIDC tokens keep theirs. The role does not exist until step 2
-creates it, and Infisical accepts the ARN before then. Account `591473336656` is the `figentra` profile's.
-
-Step 2 needs two ids, neither of them secret: the identity's id (`INFISICAL_GATE_IDENTITY_ID`) and the project's id
-(`INFISICAL_GATE_PROJECT_ID`).
+The change lands in this order, with no job in between: infra's apply, then this repository's `up` (new components and
+user data), then `build-image`, then an instance refresh. A box from the old AMI with the new user data, or the other
+way round, refuses every job with exit 75.
 
 ## Step 2 in detail: the first deploy
 
@@ -410,9 +394,6 @@ only, required reviewer the owner, and two environment variables (neither is sec
 - `TESTBED_DEPLOY_ROLE_ARN` = `arn:aws:iam::591473336656:role/stackra-testbed-deploy`
 - `TESTBED_SSH_CIDRS` (optional) = a port-22 allowlist as `x.x.x.x/32`, comma-separated, for `--ssh-direct` only.
   Leave it unset: the CLI reaches the boxes through SSM. A rule already applied stays until the owner revokes it.
-
-`INFISICAL_GATE_IDENTITY_ID` and `INFISICAL_GATE_PROJECT_ID` are organization variables; the owner gives this
-repository access to them.
 
 ### 2b. The two passes
 

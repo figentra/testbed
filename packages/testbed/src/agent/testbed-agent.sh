@@ -3,15 +3,18 @@
 # Purpose: testbed-agent, the box agent of the testbed: `slot`, `health`, `status`, `job prepare|run|stop`, `guard` and
 #          `idle` (the verbs, exit codes, paths and tags of .agents/specs/sta-1626-testbed/agent-contract.md). A job
 #          runs in a fresh container from the job image, in /data/jobs/<id>/<project>, under scale-in protection, with
-#          a short-lived Infisical token for the paths its project is granted (plus the `*` grants every project gets,
-#          the registry read token) and nothing else; cleanup always runs.
-# Boundary: POSIX sh plus jq, rsync, flock and GNU coreutils; installed by the AMI at /usr/local/bin/testbed-agent. It
-#           reads /etc/testbed/grants.json (ids and paths) and /etc/testbed/identity (an id). The Infisical token lives
-#           in one shell variable and reaches the container by `-e INFISICAL_TOKEN` (the name, never the value on a
-#           command line); no value is written to a disk or printed. Every path and tool is overridable by
-#           TESTBED_* variables so the unit tests can run it against stubs.
+#          the values of the figentra/secrets scopes its project is granted (plus the `*` scopes every project gets, the
+#          registry read token) and nothing else; cleanup always runs.
+# Boundary: POSIX sh plus jq, rsync, flock, GNU coreutils, gcloud and sops; installed by the AMI at
+#           /usr/local/bin/testbed-agent. It reads /etc/testbed/grants.json (project to scopes) and signs in to Google
+#           as the instance role with /etc/testbed/google-credentials.json (an external-account file, no secret). A
+#           job's scopes are copied from the ciphertext mirror into a private folder on /run, decrypted by sops one
+#           file at a time into an exported shell variable named after the file, and reach the container by `-e NAME`
+#           (the name, never the value on a command line); the folder is removed before the job starts, and no value
+#           is written to a disk or printed (ADR 0525). Every path and tool is overridable by TESTBED_* variables so
+#           the unit tests can run it against stubs.
 # Runtime: box (Ubuntu 24.04 AMI built by infra-testbed)
-# Governing contract: ADR 0484 (decisions 4 to 7, 9, 10); ADR 0173; the box agent contract of STA-1626.
+# Governing contract: ADR 0484 (decisions 4 to 7, 9, 10); ADR 0525; ADR 0173; the box agent contract of STA-1626.
 set -u
 
 DATA=${TESTBED_DATA_DIR:-/data}
@@ -19,9 +22,14 @@ ROOT=${TESTBED_ROOT_DIR:-/}
 STATE=${TESTBED_STATE_DIR:-/run/testbed}
 ETC=${TESTBED_ETC_DIR:-/etc/testbed}
 IMAGE=${TESTBED_IMAGE:-stackra-testbed-job:current}
-# The Infisical CLI defaults to the US cloud; ours is Infisical Cloud EU (.infisical.yaml).
-INFISICAL_DOMAIN=${INFISICAL_DOMAIN:-https://eu.infisical.com}
-export INFISICAL_DOMAIN
+# figentra/secrets' ciphertext mirror: one flat prefix per scope, "/" written as "." (ADR 0525 decision 6).
+SECRETS_BUCKET=${TESTBED_SECRETS_BUCKET:-figentra-secrets-ciphertext}
+# Workload Identity Federation as the instance role (figentra/infra stacks/secrets, provider `testbed`): sops reads
+# the first name, gcloud the second. Each gcloud call gets its own CLOUDSDK_CONFIG, removed after it.
+GOOGLE_APPLICATION_CREDENTIALS=$ETC/google-credentials.json
+CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=$GOOGLE_APPLICATION_CREDENTIALS
+CLOUDSDK_CORE_DISABLE_PROMPTS=1
+export GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE CLOUDSDK_CORE_DISABLE_PROMPTS
 PG_IMAGE=${TESTBED_POSTGRES_IMAGE:-postgres:17.6-alpine}
 STORE=${TESTBED_STORE:-$DATA/pnpm-store}
 # pnpm's metadata cache: the release-age check reads it even for a lockfile install (the image warms it beside the store).
@@ -49,7 +57,6 @@ MISE_GLOBAL_CONFIG_FILE=${MISE_GLOBAL_CONFIG_FILE:-/opt/mise/config.toml}
 export MISE_DATA_DIR MISE_GLOBAL_CONFIG_FILE
 # Overridable so the unit tests' stubs win inside the job container, whose own /opt/mise holds the real tools.
 PATH=${TESTBED_MISE_SHIMS:-/opt/mise/shims}:$PATH
-TAB=$(printf '\t')
 NL=$(printf '\n_')
 NL=${NL%_}
 
@@ -153,16 +160,22 @@ protect() {
 
 # ---- health ----------------------------------------------------------------------------------------------------
 
-grants_for() {
+scopes_for() {
   [ -s "$ETC/grants.json" ] || return 0
-  jq -r --arg p "$1" '(.[$p] // []) + (.["*"] // []) | .[] | [.projectId, .environment, .path] | @tsv' "$ETC/grants.json"
+  jq -r --arg p "$1" '(.[$p] // []) + (.["*"] // []) | unique | .[]' "$ETC/grants.json"
 }
 has_grants() { [ -s "$ETC/grants.json" ] && jq -e 'map(length) | add > 0' "$ETC/grants.json" >/dev/null 2>&1; }
-infisical_token() {
-  infisical login --method=aws-iam --machine-identity-id="$(cat "$ETC/identity")" --silent --plain
+# Whether Google issues the instance role a token: the token goes to /dev/null, gcloud's state with its folder.
+google_ready() {
+  mkdir -p "$STATE"
+  cfg=$(mktemp -d "$STATE/gcloud.XXXXXX") || return 1
+  CLOUDSDK_CONFIG=$cfg gcloud auth print-access-token >/dev/null 2>&1
+  ok=$?
+  rm -rf "$cfg"
+  return "$ok"
 }
 
-# Prints the first failing reason and returns 1. $1=1 also checks that an Infisical token is issued.
+# Prints the first failing reason and returns 1. $1=1 also checks that Google issues a token.
 health_check() {
   if [ -e "$STATE/draining" ]; then
     say draining
@@ -189,8 +202,8 @@ health_check() {
       say postgres
       return 1
     fi
-    if has_grants && [ -s "$ETC/identity" ] && [ -z "$(infisical_token 2>/dev/null)" ]; then
-      say infisical
+    if has_grants && ! google_ready; then
+      say google
       return 1
     fi
   fi
@@ -332,6 +345,37 @@ refresh_seed() {
   touch "$seed/.testbed-used"
 }
 
+# The job's secrets: each granted scope's `<NAME>.enc.yaml` files are copied from the mirror into a private folder,
+# and each is decrypted in memory into an exported shell variable NAME, so `docker run -e NAME` passes it by name.
+# A name that is not SCREAMING_SNAKE, or that is already set (PATH, one of the agent's own settings), is refused. The
+# folder (ciphertext and gcloud's state) is removed here; `finish` removes it after a failure.
+load_secrets() {
+  scopes=$(scopes_for "$JOB_PROJECT") || return 1
+  [ -n "$scopes" ] || return 0
+  SECRETS_DIR=$(mktemp -d "$STATE/secrets.XXXXXX") || return 1
+  while IFS= read -r scope; do
+    case $scope in '' | /* | */ | *[!a-z0-9/-]*) return 1 ;; esac
+    prefix=$(printf '%s' "$scope" | tr / .)
+    mkdir "$SECRETS_DIR/$prefix" || return 1
+    CLOUDSDK_CONFIG=$SECRETS_DIR/gcloud gcloud storage cp "gs://$SECRETS_BUCKET/$prefix/*.enc.yaml" \
+      "$SECRETS_DIR/$prefix/" >/dev/null 2>&1 || return 1
+  done <<EOF
+$scopes
+EOF
+  for file in "$SECRETS_DIR"/*/*.enc.yaml; do
+    [ -f "$file" ] || continue
+    name=${file##*/}
+    name=${name%.enc.yaml}
+    case $name in [!A-Z]* | *[!A-Z0-9_]*) return 1 ;; esac
+    eval "[ -z \"\${$name+set}\" ]" || return 1
+    value=$(sops decrypt --extract "[\"$name\"]" "$file" 2>/dev/null) || return 1
+    export "$name=$value"
+    SECRET_NAMES="$SECRET_NAMES $name"
+  done
+  unset value
+  rm -rf "$SECRETS_DIR"
+}
+
 finish() {
   rc=$1
   if [ "$JOB_DONE" = 1 ]; then exit "$rc"; fi
@@ -340,6 +384,7 @@ finish() {
   # must not cut it short and leave the workspace and the scale-in protection behind (seen live, 2026-11-05).
   trap - EXIT
   trap '' TERM INT HUP
+  [ -z "$SECRETS_DIR" ] || rm -rf "$SECRETS_DIR"
   ids=$(docker ps -aq --filter "label=$LABEL=$JOB_ID" 2>/dev/null || true)
   # shellcheck disable=SC2086
   [ -z "$ids" ] || docker rm -f $ids >/dev/null 2>&1 || true
@@ -369,7 +414,7 @@ cmd_job_run() {
   [ "${1:-}" = -- ] || usage
   shift
   command_text=$*
-  JOB_WS=$DATA/jobs/$JOB_ID/$JOB_PROJECT JOB_DONE=0 JOB_RAN=0 HAVE_SLOT=0 PROTECTED=0
+  JOB_WS=$DATA/jobs/$JOB_ID/$JOB_PROJECT JOB_DONE=0 JOB_RAN=0 HAVE_SLOT=0 PROTECTED=0 SECRETS_DIR='' SECRET_NAMES=''
   trap 'finish "$?"' EXIT
   trap 'exit 143' TERM INT HUP
 
@@ -388,25 +433,11 @@ cmd_job_run() {
     exit 75
   fi
 
-  # The token: one shell variable, handed to the container by name. No grant, no token.
-  grants=$(grants_for "$JOB_PROJECT")
-  if [ -n "$grants" ]; then
-    if [ ! -s "$ETC/identity" ] || ! INFISICAL_TOKEN=$(infisical_token) || [ -z "$INFISICAL_TOKEN" ]; then
-      say "unhealthy: infisical"
-      exit 75
-    fi
-    export INFISICAL_TOKEN
+  # The values: exported shell variables, handed to the container by name. No grant, no value.
+  if ! load_secrets; then
+    say "unhealthy: secrets"
+    exit 75
   fi
-  wrap() {
-    wrapped=$1
-    while IFS="$TAB" read -r project_id environment path; do
-      [ -n "$project_id" ] || continue
-      case "$project_id$environment$path" in *[!A-Za-z0-9/_.:@-]*) return 1 ;; esac
-      wrapped="infisical run --silent --projectId $project_id --env $environment --path $path -- $wrapped"
-    done <<EOF
-$grants
-EOF
-  }
 
   # A fresh one-commit snapshot of the synced tree, as ci-box made: `.git` is never uploaded (a worktree's is a file
   # pointing at the Mac), and git-based steps (`git ls-files` in format:check, oxfmt, knip) need a real repository.
@@ -422,16 +453,12 @@ EOF
   mkdir -p "$STORE" "$PNPM_CACHE" "$DATA/turbo-cache"
   export PNPM_CONFIG_CACHE_DIR="$PNPM_CACHE"
   if [ -f "$JOB_WS/pnpm-lock.yaml" ]; then
-    wrap "sh -c $(sq "$REGISTRY_AUTH; exec pnpm fetch --ignore-scripts --store-dir $(sq "$STORE")")" || {
-      say "unhealthy: grants"
-      exit 75
-    }
     fetch_dir=$DATA/jobs/$JOB_ID/.fetch
     mkdir -p "$fetch_dir"
     for f in pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.mjs .pnpmfile.cjs .npmrc; do
       [ ! -f "$JOB_WS/$f" ] || cp "$JOB_WS/$f" "$fetch_dir/"
     done
-    (cd "$fetch_dir" && flock "$STATE/store.lock" sh -c "$wrapped") || say "testbed-agent: pnpm fetch failed, the job installs what it can" >&2
+    (cd "$fetch_dir" && flock "$STATE/store.lock" sh -c "$REGISTRY_AUTH; exec pnpm fetch --ignore-scripts --store-dir $(sq "$STORE")") || say "testbed-agent: pnpm fetch failed, the job installs what it can" >&2
     rm -rf "$fetch_dir"
   fi
 
@@ -459,10 +486,6 @@ EOF
   # A repository can narrow the install with pnpm flags in .testbed/install-args (core leaves out the two Uniwind Pro
   # members, whose licensed download has a monthly quota); the words are the repository's own, like its command.
   inner="cd /work && { $REGISTRY_AUTH; } && { [ -d node_modules ] || pnpm install --prefer-offline --frozen-lockfile --store-dir /pnpm-store --package-import-method clone-or-copy \$(cat .testbed/install-args 2>/dev/null); } && {$NL$command_text$NL}"
-  wrap "sh -c $(sq "$inner")" || {
-    say "unhealthy: grants"
-    exit 75
-  }
   set -- --rm --init --name "tb-$JOB_ID" --label "$LABEL=$JOB_ID" --network "tb-$JOB_ID" \
     -v "$JOB_WS:/work" -v "$STORE:/pnpm-store" -v "$PNPM_CACHE:/pnpm-cache" -v "$DATA/turbo-cache:/turbo-cache" \
     -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)" \
@@ -470,9 +493,9 @@ EOF
     -e UNIWIND_CACHE_DIR=/pnpm-cache/uniwind \
     -e CI=true -e "TESTBED_JOB=$JOB_ID"
   [ "$postgres" = 0 ] || set -- "$@" -e "TESTBED_POSTGRES_HOST=tb-$JOB_ID-pg"
-  [ -z "${INFISICAL_TOKEN:-}" ] || set -- "$@" -e INFISICAL_TOKEN -e INFISICAL_DOMAIN
+  for name in $SECRET_NAMES; do set -- "$@" -e "$name"; done
   JOB_RAN=1
-  timeout "$TIMEOUT" docker run "$@" "$IMAGE" sh -c "$wrapped"
+  timeout "$TIMEOUT" docker run "$@" "$IMAGE" sh -c "$inner"
   finish "$?"
 }
 

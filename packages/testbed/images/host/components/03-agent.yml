@@ -3,7 +3,7 @@
 #          guard and idle systemd timers (every five minutes), warms the shared pnpm store on /data from the core
 #          lockfile, and cleans the build instance so the AMI carries no history.
 # Boundary: build-time only. The warm-up is best effort: packages that need a registry token fail to fetch here and are
-#           fetched at job time, under the job's Infisical token. No secret is read or written.
+#           fetched at job time, with the job's registry token. No secret is read or written.
 # Owner: release-operations · Secrets: forbidden
 # Governing contract: ADR 0484 (decisions 2, 4 and 5).
 name: testbed-agent

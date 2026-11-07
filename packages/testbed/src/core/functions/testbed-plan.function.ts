@@ -5,10 +5,10 @@
  *          `light` spot group (c7i, c6i and m7i 2xlarge, 0 to 1), sized to the region's vCPU quotas (8 on-demand,
  *          8 spot), a 40 GB root and a 200 GB XFS `/data` disk deleted with the instance, the guard
  *          thresholds, the 60 minute idle stop, the image parameters (built by hand, no schedule), the toolchain pins
- *          and the secret grants (core's CI paths, and the registry read path for every project, `*`). The result is
- *          validated by zod, which refuses a plan above the quotas.
- * Boundary: pure; no Pulumi, no Node, no cloud. A grant exists only when the caller passes the Infisical project id,
- *           and holds ids and paths, never a value (ADR 0173).
+ *          and the secret grants (core's CI build scopes of figentra/secrets, and the registry read scope for every
+ *          project, `*`). The result is validated by zod, which refuses a plan above the quotas.
+ * Boundary: pure; no Pulumi, no Node, no cloud. A grant holds scope names, never a value (ADR 0173, ADR 0525); what a
+ *           box may really read is figentra/infra's grant to the instance role.
  * Runtime: isomorphic
  * Governing contract: ADR 0484 (decisions 2 to 9); ADR 0516 (quotas); ADR 0173; the owner's answers of 2026-10-30
  *                     and 2026-11-02 (option A: each group 0 to 1); 2026-11-03 (a pool in each of the four
@@ -24,32 +24,20 @@ import type { TestbedPlanInput } from "#core/types/testbed-plan-input.type";
 /**
  * Plans the testbed.
  *
- * @param input - optional region, group counts, the region's vCPU quotas and the Infisical ids.
+ * @param input - optional region, group counts and the region's vCPU quotas.
  * @throws ZodError when the input or the resulting plan breaks a rule.
  * @example
- * const plan = testbedPlan({ identityId: config.require("identityId"), ciGateProjectId: config.require("projectId") });
+ * const plan = testbedPlan({ region: config.get("region") });
  */
 export function testbedPlan(input: TestbedPlanInput = {}): TestbedPlan {
   const given = TESTBED_PLAN_INPUT_SCHEMA.parse(input);
-  const environment = given.infisicalEnvironment ?? "prod";
-  const grants =
-    given.ciGateProjectId === undefined
-      ? {}
-      : {
-          // The paths CI reads (ci.yml): the licence tokens in /ci, the remote cache in /ci/turbo; both live in the
-          // figentra-ci project, which the gate identity reads.
-          core: [
-            { projectId: given.ciGateProjectId, environment, path: "/ci" },
-            {
-              projectId: given.turboProjectId ?? given.ciGateProjectId,
-              environment,
-              path: "/ci/turbo",
-            },
-          ],
-          // Every project, core included: the registry read token, so a repository that installs @figentra/* (every
-          // product) can install on a box (owner-todo item 7). The agent merges `*` into each project's grants.
-          "*": [{ projectId: given.ciGateProjectId, environment, path: "/ci/registry" }],
-        };
+  const grants = {
+    // The scopes CI's build reads: the licence tokens in ci/build, the remote cache in ci/build/turbo.
+    core: ["ci/build", "ci/build/turbo"],
+    // Every project, core included: the registry read token, so a repository that installs @figentra/* (every
+    // product) can install on a box (owner-todo item 7). The agent merges `*` into each project's scopes.
+    "*": ["ci/build/registry"],
+  };
 
   return TESTBED_PLAN_SCHEMA.parse({
     region: given.region ?? D.region,
@@ -92,11 +80,7 @@ export function testbedPlan(input: TestbedPlanInput = {}): TestbedPlan {
       baseImageParameter: D.baseImageParameter,
     },
     toolchain: { ...TOOLCHAIN_PINS },
-    secretGrants: {
-      identityName: "gate",
-      identityId: given.identityId,
-      projects: grants,
-    },
+    secretGrants: { workloadIdentityProvider: D.googleProvider, projects: grants },
     tags: { groupKey: D.groupTagKey, environment: D.environmentTag, service: D.serviceTag },
   });
 }

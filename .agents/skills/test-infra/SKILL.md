@@ -84,7 +84,7 @@ have no fallback either, and nothing ever falls back to the Mac.
 - Never install, patch or reconfigure anything on a box. Boxes are replaced, not repaired. A missing tool belongs in
   the image (figentra/testbed, `packages/testbed/images`), which only the owner rebuilds.
 - Never free disk by hand. The guard cleans at 70% and drains the box at 85%.
-- Never copy a token to a box, and never use `put-env`: it is retired. Jobs get tokens from Infisical. A missing token
+- Never copy a token to a box, and never use `put-env`: it is retired. Jobs get tokens from figentra/secrets. A missing token
   is the owner's to add.
 - Never `pulumi up`, dispatch `Apply testbed` with `up` or `build-image`, mark a box unhealthy, start an instance
   refresh or change a group's size beyond `testbed scale`: those are the owner's. An agent may dispatch `preview`.
