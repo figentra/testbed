@@ -13,8 +13,8 @@
  *          no schedule: the owner starts a build by hand, only while the heavy group is at 0, since the build
  *          instance and a heavy box do not both fit the region's on-demand vCPU quota (ADR 0516)).
  * Boundary: declares resources only, inside the Pulumi program that calls it; agents only preview, the owner applies.
- *           No secret value is created or read: the box reaches Infisical through its instance role (AWS IAM auth) and
- *           the plan holds ids and paths. The first apply uses `groups: false`, builds the first image, then applies
+ *           No secret value is created or read: the box signs in to Google as its instance role (Workload Identity
+ *           Federation, ADR 0525) and the plan holds scope names. The first apply uses `groups: false`, builds the first image, then applies
  *           again with the groups and their launch template: EC2 refuses a template whose AMI parameter is missing.
  * Runtime: node
  * Governing contract: ADR 0484 (decisions 2 to 10); ADR 0516 (quotas); ADR 0171 (decisions 2, 3 and 5); ADR 0172
@@ -53,7 +53,7 @@ function assumedBy(service: string): string {
  * // pulumi/main.mjs
  * const config = new pulumi.Config();
  * export const testbed = awsTestbed(
- *   testbedPlan({ identityId: config.require("identityId"), ciGateProjectId: config.require("ciGateProjectId") }),
+ *   testbedPlan({ region: config.get("region") }),
  *   { allowedCidrs: config.getObject<string[]>("sshCidrs") ?? [], lockfilePath: config.require("lockfilePath") },
  * );
  */
@@ -307,7 +307,7 @@ function awsTestbedHome(
   },
 ): HomeResources {
   const { opts, tags } = shared;
-  // ---- the box's role: SSM, Auto Scaling on its own groups, and the AWS identity Infisical checks ------------------
+  // ---- the box's role: SSM, Auto Scaling on its own groups, and the AWS identity Google checks ---------------------
   const instanceRole = new aws.iam.Role(
     "testbed-instance",
     {
@@ -363,7 +363,7 @@ function awsTestbedHome(
             ],
             Resource: "*",
           },
-          // Infisical's AWS auth verifies this identity; the call needs no grant, and naming it keeps the intent in review.
+          // Google's Workload Identity verifies this identity (a signed call); it needs no grant, naming it keeps intent.
           { Sid: "Identity", Effect: "Allow", Action: "sts:GetCallerIdentity", Resource: "*" },
         ],
       }),
@@ -447,7 +447,8 @@ function awsTestbedHome(
     MISE: pins.mise ?? "",
     NODE: pins.node ?? "",
     PNPM: pins.pnpm ?? "",
-    INFISICAL: pins.infisical ?? "",
+    SOPS: pins.sops ?? "",
+    GCLOUD: pins.gcloud ?? "",
     SHFMT: pins.shfmt ?? "",
     ENCORE: pins.encore ?? "",
     PLAYWRIGHT: pins.playwright ?? "",

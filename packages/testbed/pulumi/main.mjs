@@ -3,7 +3,7 @@
  * Purpose: the Pulumi program of the testbed (STA-1626): the plan from this stack's config and every resource it holds,
  *          with the ids the owner copies (instance role ARN, pipeline ARN, group names) exported as stack outputs.
  * Boundary: config keys `region` (one of the four, default eu-west-1; one stack per region, STA-2042),
- *           `identityId`, `ciGateProjectId`, `lockfilePath` (required: core's `pnpm-lock.yaml` in the workflow's
+ *           `lockfilePath` (required: core's `pnpm-lock.yaml` in the workflow's
  *           sparse checkout of figentra/stackra, with `pnpm-workspace.yaml`, `.pnpmfile.mjs` and `.npmrc` beside it;
  *           absolute, or relative to this folder), `sshCidrs` (optional: the `--ssh-direct` fallback's port-22
  *           allowlist; absent, no inbound rule and SSM only), `groups` (false for the first apply, before the first AMI
@@ -24,9 +24,6 @@ const min = (key) => (config.getNumber(key) === undefined ? {} : { min: config.g
 
 const plan = testbedPlan({
   region: config.get("region"),
-  identityId: config.require("identityId"),
-  ciGateProjectId: config.require("ciGateProjectId"),
-  turboProjectId: config.get("turboProjectId"),
   heavy: min("heavyMin"),
   light: min("lightMin"),
 });

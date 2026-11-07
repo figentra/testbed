@@ -2,7 +2,7 @@
   "name": "@figentra/testbed",
   "version": "0.1.1",
   "private": false,
-  "description": "The testbed: disposable, image-built EC2 test boxes in two Auto Scaling groups, an EC2 Image Builder pipeline that bakes the job image and the box agent into an AMI, the grants that let a box read its job secrets from Infisical, and the `testbed` CLI that runs heavy checks on them; the plan is pure data, the Pulumi program only declares",
+  "description": "The testbed: disposable, image-built EC2 test boxes in two Auto Scaling groups, an EC2 Image Builder pipeline that bakes the job image and the box agent into an AMI, the grants that let a box read its job secrets from figentra/secrets, and the `testbed` CLI that runs heavy checks on them; the plan is pure data, the Pulumi program only declares",
   "keywords": [
     "ami",
     "auto-scaling",

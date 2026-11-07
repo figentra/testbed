@@ -3,14 +3,13 @@
  * Purpose: unit tests of `awsTestbed` under Pulumi's mocks: the provider is pinned to eu-west-1; the default subnets
  *          are only those in zones that offer the heavy type; the security group
  *          allows SSH only from the allowlist; the launch template resolves the AMI from the SSM parameter, requires
- *          IMDSv2, has a 40 GB root and a 200 GB data volume deleted with the instance, and its user data holds ids
- *          and no secret; `heavy` is on-demand and `light` is mixed-instances spot with capacity rebalance; both
+ *          IMDSv2, has a 40 GB root and a 200 GB data volume deleted with the instance, and its user data holds the
+ *          scopes and the Google external-account file and no secret; `heavy` is on-demand and `light` is mixed-instances spot with capacity rebalance; both
  *          groups use EC2 health checks and an instance refresh that waits for protected instances at 100% healthy;
  *          the instance policy limits Auto Scaling calls to groups by tag; the Image Builder recipe version is derived
  *          from the inputs, no component keeps a placeholder, the distribution writes the AMI parameter and the
  *          pipeline is weekly; the job Dockerfile's defaults equal the pins; a given VPC and subnets are used and
- *          `groups: false` declares no Auto Scaling group and no launch template; a plan without a project writes an
- *          empty identity.
+ *          `groups: false` declares no Auto Scaling group and no launch template.
  * Boundary: test only; no cloud is called and no state is written (`pulumi.runtime.setMocks`). The lockfile input is
  *           the small fixture in `fixtures/` (a lockfile with its pnpm-workspace.yaml, .pnpmfile.mjs and .npmrc), not
  *           core's.
@@ -38,7 +37,7 @@ type Registered = {
 
 const registered: Registered[] = [];
 const LOCKFILE = fileURLToPath(new URL("fixtures/pnpm-lock.yaml", import.meta.url));
-const PLAN = testbedPlan({ identityId: "identity-1", ciGateProjectId: "project-1" });
+const PLAN = testbedPlan();
 
 let stack: AwsTestbed;
 // The inputs of the getSubnets call, as the mocks saw them.
@@ -157,13 +156,28 @@ describe("awsTestbed", () => {
     ]);
   });
 
-  it("writes ids to user data and no secret", () => {
+  it("writes scopes and the Google credentials file to user data, and no secret", () => {
     const template = resource("ec2/launchTemplate:LaunchTemplate", "testbed").inputs;
     const userData = Buffer.from(String(template.userData), "base64").toString("utf8");
     expect(userData).toBe(testbedUserData(PLAN));
-    expect(userData).toContain("/etc/testbed/grants.json");
-    expect(userData).toContain("identity-1");
-    expect(userData).not.toMatch(/token|secret|password|key/i);
+    expect(userData).toContain('{"core":["ci/build","ci/build/turbo"],"*":["ci/build/registry"]}');
+    // The credentials file names token URLs; it holds no credential of its own, only where to read the box's.
+    const [head = "", rest = ""] = userData.split(
+      "/etc/testbed/google-credentials.json <<'GOOGLE'\n",
+    );
+    const [file = "", tail = ""] = rest.split("\nGOOGLE\n");
+    expect(head + tail).not.toMatch(/token|secret|password|key/i);
+    expect(file).not.toMatch(/secret|password|private_key|impersonation/i);
+    expect(JSON.parse(file)).toMatchObject({
+      type: "external_account",
+      audience:
+        "//iam.googleapis.com/projects/330719355948/locations/global/workloadIdentityPools/github/providers/testbed",
+      credential_source: {
+        environment_id: "aws1",
+        imdsv2_session_token_url: "http://169.254.169.254/latest/api/token",
+      },
+    });
+    expect(tail).toContain("chmod 0644");
   });
 
   it("keeps heavy on-demand and runs only light on spot", () => {
@@ -289,7 +303,8 @@ describe("awsTestbed", () => {
     expect(dockerfile).toContain(`ARG MISE_VERSION=${TOOLCHAIN_PINS.mise}`);
     expect(dockerfile).toContain(`ARG NODE_VERSION=${TOOLCHAIN_PINS.node}`);
     expect(dockerfile).toContain(`ARG PNPM_VERSION=${TOOLCHAIN_PINS.pnpm}`);
-    expect(dockerfile).toContain(`ARG INFISICAL_VERSION=${TOOLCHAIN_PINS.infisical}`);
+    // Jobs get values by name from the agent: the job image carries no secrets CLI.
+    expect(dockerfile).not.toMatch(/infisical|sops/i);
     expect(dockerfile).toContain(`ARG SHFMT_VERSION=${TOOLCHAIN_PINS.shfmt}`);
     expect(dockerfile).toContain(`ARG ENCORE_VERSION=${TOOLCHAIN_PINS.encore}`);
     expect(dockerfile).toContain(`ARG PLAYWRIGHT_VERSION=${TOOLCHAIN_PINS.playwright}`);
@@ -360,12 +375,6 @@ describe("awsTestbed with a given network and no groups", () => {
     expect(later("ec2/launchTemplate:LaunchTemplate")).toEqual([]);
     expect(bare.launchTemplateId).toBeUndefined();
   });
-
-  it("writes an empty identity and no grants for a plan without a project", () => {
-    const userData = testbedUserData(testbedPlan());
-    expect(userData).toContain("printf '%s\\n' '' > /etc/testbed/identity");
-    expect(userData).toContain("{}");
-  });
 });
 
 describe("awsTestbed for a member region (STA-2042)", () => {
@@ -374,10 +383,7 @@ describe("awsTestbed for a member region (STA-2042)", () => {
 
   beforeAll(async () => {
     start = registered.length;
-    member = awsTestbed(
-      testbedPlan({ region: "eu-west-2", identityId: "identity-1", ciGateProjectId: "project-1" }),
-      { lockfilePath: LOCKFILE },
-    );
+    member = awsTestbed(testbedPlan({ region: "eu-west-2" }), { lockfilePath: LOCKFILE });
     await new Promise((resolve) => {
       member.securityGroupId.apply(resolve);
     });

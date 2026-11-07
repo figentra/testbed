@@ -1,7 +1,7 @@
 /**
  * Testbed file contract:
  * Purpose: `AwsTestbed`, what `awsTestbed` returns: the ids a stack exports and the owner copies (the instance role
- *          ARN goes into the Infisical machine identity's AWS auth, the AMI parameter and the pipeline ARN into the
+ *          name is what figentra/infra's Google `testbed` provider trusts, the AMI parameter and the pipeline ARN into the
  *          image runbook).
  * Boundary: a type only; every value is an id or a name, never a secret.
  * Runtime: node
@@ -17,7 +17,7 @@ export type AwsTestbed = {
   readonly home: boolean;
   /** The id of the security group that allows SSH from the allowlist only. */
   readonly securityGroupId: pulumi.Output<string>;
-  /** The ARN of the box instance role, the principal the Infisical AWS Auth trusts; home only. */
+  /** The ARN of the box instance role, the principal Google's Workload Identity `testbed` provider trusts; home only. */
   readonly instanceRoleArn?: pulumi.Output<string>;
   /** The id of the launch template both groups start boxes from; absent, like `groups`, before the first image. */
   readonly launchTemplateId?: pulumi.Output<string>;

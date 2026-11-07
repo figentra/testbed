@@ -2,7 +2,7 @@
  * Testbed file contract:
  * Purpose: `TESTBED_DEFAULTS`, every default of the testbed that the `testbed` CLI and `testbed-agent` also know: the
  *          region, AWS profile, SSH user, security group and key names, the group names, the AMI parameter, the tag
- *          keys, the region's vCPU quotas, the disk, guard and idle numbers, the job label, the rsync excludes, and the reserved exit codes. It
+ *          keys, the region's vCPU quotas, the disk, guard and idle numbers, the job label, the rsync excludes, the reserved exit codes, the Google provider and the ciphertext bucket. It
  *          is the TypeScript form of `.agents/specs/sta-1626-testbed/agent-contract.md`.
  * Boundary: data only; pure and Pulumi-free. A change here is a change to the contract, so the CLI follows it.
  * Runtime: isomorphic
@@ -64,6 +64,13 @@ export const TESTBED_DEFAULTS = {
     intervalMinutes: 5,
   },
   exitCodes: { slotBusy: 73, unhealthy: 75, timeout: 124 },
+  /**
+   * The Workload Identity provider the boxes sign in to Google through, as the instance role (figentra/infra
+   * stacks/secrets, provider `testbed`), and figentra/secrets' ciphertext mirror the agent reads (ADR 0525).
+   */
+  googleProvider:
+    "projects/330719355948/locations/global/workloadIdentityPools/github/providers/testbed",
+  secretsBucket: "figentra-secrets-ciphertext",
   /** What the Mac's rsync leaves out of a project; the agent's seed refresh leaves out the same. */
   rsyncExcludes: [
     "node_modules",

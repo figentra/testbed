@@ -7,7 +7,7 @@
  *          group's maximum fits its purchase option's quota, and the manual image build (a heavy-type on-demand
  *          instance) fits beside the heavy group's minimum in the home region, the only one that builds. The region
  *          is one of the four, and `home` says whether it is the home region (STA-2042).
- * Boundary: schemas only; pure and Pulumi-free. A secret grant holds ids, environments and paths, never a value.
+ * Boundary: schemas only; pure and Pulumi-free. A secret grant holds scope names, never a value.
  * Runtime: isomorphic
  * Governing contract: ADR 0484 (decisions 3, 4, 8, 9); ADR 0516 (decisions 2 and 4); ADR 0173 (names and paths only).
  */
@@ -50,13 +50,8 @@ const DISK = z.object({
   deviceName: z.string().startsWith("/dev/"),
 });
 
-const GRANT = z
-  .object({
-    projectId: z.string().min(1),
-    environment: z.string().min(1),
-    path: z.string().startsWith("/"),
-  })
-  .strict();
+/** A figentra/secrets scope (ADR 0525): lower-case folders, e.g. `ci/build/registry`. */
+const SCOPE = z.string().regex(/^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/);
 
 /** The plan: plain data the program declares and the tests assert. */
 export const TESTBED_PLAN_SCHEMA = z
@@ -107,11 +102,10 @@ export const TESTBED_PLAN_SCHEMA = z
     toolchain: z.record(z.string(), z.string().min(1)),
     secretGrants: z
       .object({
-        /** The Infisical machine identity name; its id is a Pulumi config input, an id and not a secret. */
-        identityName: z.string().min(1),
-        identityId: z.string().min(1).optional(),
-        /** Project name (as `testbed run` names it) to the paths a job of it may read; `*` adds to every project. */
-        projects: z.record(z.string(), z.array(GRANT)),
+        /** The Workload Identity provider the boxes sign in to Google through, as the instance role; a name. */
+        workloadIdentityProvider: z.string().startsWith("projects/"),
+        /** Project name (as `testbed run` names it) to the scopes a job of it may read; `*` adds to every project. */
+        projects: z.record(z.string(), z.array(SCOPE)),
       })
       .strict(),
     tags: z

@@ -83,7 +83,7 @@ jobs:
           yq '.phases[] | select(.name == "validate") | .steps[].inputs.commands[]' \
             images/host/components/02-images.yml \
             | sed -e "s|@@NODE@@|$(arg NODE_VERSION)|g" -e "s|@@PNPM@@|$(arg PNPM_VERSION)|g" \
-              -e "s|@@INFISICAL@@|$(arg INFISICAL_VERSION)|g" -e "s|@@SHFMT@@|$(arg SHFMT_VERSION)|g" \
+              -e "s|@@SHFMT@@|$(arg SHFMT_VERSION)|g" \
               -e "s|@@ENCORE@@|$(arg ENCORE_VERSION)|g" -e "s|@@PLAYWRIGHT@@|$(arg PLAYWRIGHT_VERSION)|g" \
               -e "s|@@POSTGRES@@|$postgres|g" > "$RUNNER_TEMP/validate.sh"
           if grep -n '@@' "$RUNNER_TEMP/validate.sh"; then echo "::error::an unfilled placeholder"; exit 1; fi

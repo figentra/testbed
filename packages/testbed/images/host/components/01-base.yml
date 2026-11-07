@@ -1,7 +1,8 @@
 # Stackra file contract:
 # Purpose: EC2 Image Builder component `testbed-base`: the host's packages (Docker, XFS tools, rsync, jq), the AWS CLI,
-#          mise with the repository's Node, pnpm and Infisical CLI (the agent runs `pnpm fetch` and `infisical login`
-#          on the host), the data-volume mount unit, and Docker's data root on /data.
+#          mise with the repository's Node, pnpm and sops, and the Google Cloud CLI (the agent runs `pnpm fetch`, and
+#          fetches and decrypts a job's figentra/secrets scopes, on the host), the data-volume mount unit, and Docker's
+#          data root on /data.
 # Boundary: build-time only. Double-at placeholders (bucket, pins) are filled by `awsTestbed` from the plan's toolchain pins and the
 #           inputs bucket; the build inputs arrive from that bucket. No secret is read or written.
 # Owner: release-operations · Secrets: forbidden
@@ -36,9 +37,16 @@ phases:
               set -eu
               curl -fsSL https://mise.run | MISE_VERSION=@@MISE@@ MISE_INSTALL_PATH=/usr/local/bin/mise sh
               export MISE_DATA_DIR=/opt/mise MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml MISE_YES=1
-              mise use --global node@@@NODE@@ pnpm@@@PNPM@@ github:Infisical/cli@@@INFISICAL@@
+              mise use --global node@@@NODE@@ pnpm@@@PNPM@@ aqua:getsops/sops@@@SOPS@@
               mise reshim
               chmod -R a+rX /opt/mise
+              # The Google Cloud CLI, pinned, for Workload Identity sign-in and `gcloud storage cp`; the agent gives
+              # each call its own CLOUDSDK_CONFIG, so no prompt, update check or usage report is ever configured.
+              curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-@@GCLOUD@@-linux-x86_64.tar.gz" \
+                | tar -xz -C /opt
+              printf '[core]\ndisable_usage_reporting = true\n[component_manager]\ndisable_update_check = true\n' \
+                > /opt/google-cloud-sdk/properties
+              ln -sf /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud
       - name: DataVolume
         action: ExecuteBash
         inputs:
@@ -71,6 +79,7 @@ phases:
               docker info 2>/dev/null | grep -q 'Docker Root Dir: /data/docker'
               /opt/mise/shims/node --version | grep -qx 'v@@NODE@@'
               /opt/mise/shims/pnpm --version | grep -qx '@@PNPM@@'
-              /opt/mise/shims/infisical --version
+              /opt/mise/shims/sops --version | grep -q '@@SOPS@@'
+              gcloud version 2>/dev/null | grep -qx 'Google Cloud SDK @@GCLOUD@@'
               # The CLI reaches a box only through SSM Session Manager (STA-1953); the Ubuntu AMI ships the agent.
               systemctl list-unit-files | grep -q amazon-ssm-agent

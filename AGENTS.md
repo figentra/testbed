@@ -26,7 +26,7 @@ runbook is `docs/runbook.md`; the box agent's contract is `.agents/specs/sta-162
   `node_modules` already exists, so a Mac skips it. There is no pre-push hook.
 - Versions come only from the `pnpm-workspace.yaml` catalogs (`catalog:<name>`), exact, `catalogMode: strict`; the
   toolchain is pinned in `mise.toml`.
-- Secrets: names only. Never read, print, log or commit a value; a box gets a short-lived token for its granted paths.
+- Secrets: names only. Never read, print, log or commit a value; a box decrypts only its job's granted figentra/secrets scopes, in memory.
 - Never request or suggest an AWS quota increase without the owner's explicit confirmation.
 - Done = `pnpm verify` green. Conventional commits; a `feat`, `fix`, `refactor` or `perf` commit carries
   `Refs: STA-n`. A changeset for every package change.

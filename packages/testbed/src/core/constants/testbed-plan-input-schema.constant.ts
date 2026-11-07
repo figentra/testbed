@@ -1,8 +1,8 @@
 /**
  * Testbed file contract:
  * Purpose: `TESTBED_PLAN_INPUT_SCHEMA`, the zod schema of the few inputs `testbedPlan` takes: region, group counts,
- *          the region's vCPU quotas and the two Infisical ids. Every field is optional; the plan fills the owner's answers of 2026-10-30.
- * Boundary: a schema only; pure and Pulumi-free. The ids are ids, never secrets.
+ *          the region's vCPU quotas. Every field is optional; the plan fills the owner's answers of 2026-10-30.
+ * Boundary: a schema only; pure and Pulumi-free.
  * Runtime: isomorphic
  * Governing contract: ADR 0484 (decisions 8 and 9); ADR 0516 (quotas); ADR 0173.
  */
@@ -27,13 +27,5 @@ export const TESTBED_PLAN_INPUT_SCHEMA = z
       .object({ onDemandVcpus: COUNT.min(1), spotVcpus: COUNT.min(1) })
       .strict()
       .optional(),
-    /** Infisical machine identity id: the shared gate identity (CI's INFISICAL_GATE_IDENTITY_ID), from Pulumi config. */
-    identityId: z.string().min(1).optional(),
-    /** Infisical project id of `ci-build`, from Pulumi config; without it no project has a grant. */
-    ciGateProjectId: z.string().min(1).optional(),
-    /** Infisical project id holding `/ci/turbo` when it is not `ciGateProjectId` (CI's INFISICAL_TURBO_PROJECT_ID). */
-    turboProjectId: z.string().min(1).optional(),
-    /** The Infisical environment slug the grants read. */
-    infisicalEnvironment: z.string().min(1).optional(),
   })
   .strict();
