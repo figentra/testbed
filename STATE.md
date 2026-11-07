@@ -68,8 +68,8 @@ Authoritative docs: root `AGENTS.md` (repo rules), `packages/testbed/AGENTS.md` 
 - **Main CI:** green at `8297004` (run 42157053882).
 - **Release at head:** Release run 42157054471 failed: "The deployment was rejected or didn't satisfy other
   protection rules" (the `release` environment). No pending changeset exists, so nothing is waiting to publish.
-- **Open pull requests:** 0.
-- **Branches:** 8 besides `main`, none with an open pull request (all from 2026-11-04 or later).
+- **Open pull requests:** 0 besides this one (#17).
+- **Branches:** 8 besides `main` and this PR's branch, none with an open pull request (all from 2026-11-04 or later).
 - **Infisical references:** `git grep -i -c infisical` totals 124 lines in 32 files: the box agent, the plan schema,
   the Pulumi grants, the job image, `mise.toml` (the Infisical CLI), the runbook and the specs. Several sit in hashed
   image inputs, so changing them forces an image rebuild.
