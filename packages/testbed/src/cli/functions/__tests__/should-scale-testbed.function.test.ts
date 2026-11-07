@@ -37,7 +37,7 @@ describe("resolveTestbedSettings", () => {
     expect(resolveTestbedSettings({ region: "us-east-1" }, env, "/h").region).toBe("us-east-1");
     expect(resolveTestbedSettings({}, env, "/h").region).toBe("eu-west-2");
     expect(resolveTestbedSettings({}, {}, "/h")).toEqual({
-      profile: "academorix",
+      profile: "figentra",
       region: "eu-west-1",
       regions: ["eu-west-1", "eu-west-2", "eu-central-1", "us-east-1"],
       key: "/h/.ssh/academorix-ci.pem",
