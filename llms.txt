@@ -1,0 +1,27 @@
+# testbed
+
+> Disposable, image-built EC2 boxes that run heavy checks, their Pulumi program, the box agent and the `testbed` CLI (`@figentra/testbed`).
+
+## Docs
+
+- [STATE.md](STATE.md): what is proven, what is not, and the open risks (2026-11-07)
+- [README.md](README.md): the CLI verbs, layout and development
+- [AGENTS.md](AGENTS.md): rules for agents working in this repository
+- [Package rules](packages/testbed/AGENTS.md): the package's own agent rules
+- [Runbook](docs/runbook.md): how jobs run, replacing a box, rebuilding the image, secrets, cost
+- [Specs index](.agents/specs/README.md): STA-1626 and STA-2042, and the old paths they name
+- [Agent contract](.agents/specs/sta-1626-testbed/agent-contract.md): the frozen CLI and agent interface
+- [Workflows](.github/workflows/README.md): what each workflow does and who may dispatch it
+
+## Entry points
+
+- [Package README](packages/testbed/README.md)
+- [CLI](packages/testbed/src/cli/): the `testbed` command
+- [Plan](packages/testbed/src/core/): `testbedPlan`, defaults and toolchain pins
+- [Pulumi resources](packages/testbed/src/node/): `awsTestbed`
+- [Box agent](packages/testbed/src/agent/testbed-agent.sh)
+- [Images](packages/testbed/images/): the job image and host image components
+- [Pulumi project](packages/testbed/pulumi/)
+- [ci-box shim](scripts/ci-box-shim.sh)
+- [Apply workflow](.github/workflows/apply-testbed.yml)
+- [Test-infra skill](.agents/skills/test-infra/SKILL.md)
