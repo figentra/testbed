@@ -26,7 +26,7 @@ export const TESTBED_DEFAULTS = {
   homeRegion: "eu-west-1",
   /** The instance role and profile every region's boxes use; the home stack declares both (IAM is global). */
   instanceProfile: "stackra-testbed-instance",
-  awsProfile: "academorix",
+  awsProfile: "figentra",
   sshUser: "ubuntu",
   securityGroup: "stackra-testbed",
   keyPair: "academorix-ci",

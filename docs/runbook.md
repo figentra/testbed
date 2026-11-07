@@ -34,7 +34,7 @@ the state bucket `stackra-pulumi-state-591473336656`, the Pulumi project `stackr
 `testbed-<region>`, every `stackra-testbed-*` resource (the groups `stackra-testbed-heavy` and `stackra-testbed-light`,
 the image pipeline `stackra-testbed`, the roles `stackra-testbed-instance` and `stackra-testbed-deploy`), the tag
 `stackra:testbed`, the AMI parameter `/imagebuilder/stackra-testbed/ami`, the key pair `academorix-ci` and the AWS
-profile `academorix`.
+profile `figentra`.
 
 ## The shape
 
@@ -120,14 +120,14 @@ Also:
 
 By SSH through **SSM Session Manager**: `ssh`, `rsync` and every verb connect to `ubuntu@<instance-id>` with an
 `AWS-StartSSHSession` `ProxyCommand`. The security group has no inbound rule, so a changing public IP (Cloudflare WARP)
-does not matter. Needs on the Mac: the `aws` CLI with the `academorix` profile, the SSH key, and the Session Manager
+does not matter. Needs on the Mac: the `aws` CLI with the `figentra` profile, the SSH key, and the Session Manager
 plugin, pinned in the calling repository's `mise.toml` (figentra/stackra's does; `mise install`). The box side is already there:
 the instance role has `AmazonSSMManagedInstanceCore`, the Ubuntu image runs the SSM agent, and egress is open.
 
 `testbed --ssh-direct` (or `STACKRA_TESTBED_SSH_DIRECT=1`) is the fallback: it connects to the public IP and swaps this
 machine's address into the port-22 allowlist, which exists only when `TESTBED_SSH_CIDRS` was set at apply.
 
-The `academorix` profile runs as the account root today, so it needs no policy. A non-root caller needs this much:
+The `figentra` profile runs as the account root today, so it needs no policy. A non-root caller needs this much:
 
 ```json
 {
@@ -184,7 +184,7 @@ Replace, don't repair. A box that is unhealthy or acting oddly:
 3. The owner, or the tester with the owner's yes, marks it unhealthy:
 
    ```bash
-   aws autoscaling set-instance-health --instance-id <id> --health-status Unhealthy --profile academorix --region eu-west-1
+   aws autoscaling set-instance-health --instance-id <id> --health-status Unhealthy --profile figentra --region eu-west-1
    ```
 
 The group starts a new box from the current image within about five minutes. Never SSH in to patch packages, edit
@@ -223,8 +223,8 @@ core `main`, with the test that the toolchain pins match core's `mise.toml` and 
 The usual way is `apply-testbed.yml` with `action=build-image` and `region=eu-west-1`; by hand:
 
 ```bash
-aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names stackra-testbed-heavy --query 'AutoScalingGroups[0].DesiredCapacity' --profile academorix --region eu-west-1
-aws imagebuilder start-image-pipeline-execution --image-pipeline-arn <arn of stackra-testbed> --profile academorix --region eu-west-1
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names stackra-testbed-heavy --query 'AutoScalingGroups[0].DesiredCapacity' --profile figentra --region eu-west-1
+aws imagebuilder start-image-pipeline-execution --image-pipeline-arn <arn of stackra-testbed> --profile figentra --region eu-west-1
 ```
 
 A failed build keeps the last good AMI.
@@ -233,7 +233,7 @@ To roll out a new image, the owner starts an instance refresh. Boxes running a j
 protected boxes until they are free:
 
 ```bash
-aws autoscaling start-instance-refresh --auto-scaling-group-name stackra-testbed-heavy --profile academorix --region eu-west-1
+aws autoscaling start-instance-refresh --auto-scaling-group-name stackra-testbed-heavy --profile figentra --region eu-west-1
 ```
 
 Repeat with `stackra-testbed-light`, and in each region that runs boxes (`--region` of that region).
@@ -276,7 +276,7 @@ is at 0. The old fleet ran about $1,900 a month.
 
 ## Answering fleet questions from live state
 
-Read-only, with the `academorix` profile; each answer comes from AWS, never from this file.
+Read-only, with the `figentra` profile; each answer comes from AWS, never from this file.
 
 - **Capacity:** `testbed status --json` (every enabled region's free, total and startable slots); one region outside
   the enabled list: `testbed status --json --regions <region>`.
@@ -352,7 +352,7 @@ so the move to this repository changes nothing here.
 4. Save. The identity page now lists two auth methods, OIDC Auth and AWS Auth.
 
 These settings belong to the AWS Auth method only; CI's OIDC tokens keep theirs. The role does not exist until step 2
-creates it, and Infisical accepts the ARN before then. Account `591473336656` is the `academorix` profile's.
+creates it, and Infisical accepts the ARN before then. Account `591473336656` is the `figentra` profile's.
 
 Step 2 needs two ids, neither of them secret: the identity's id (`INFISICAL_GATE_IDENTITY_ID`) and the project's id
 (`INFISICAL_GATE_PROJECT_ID`).
@@ -377,7 +377,7 @@ The workflow cannot create the role it signs in with, so the owner creates it on
 account has none yet:
 
 ```bash
-aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com --profile academorix
+aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com --profile figentra
 ```
 
 The deploy role, trusted only by the `testbed` environment of the repository that applies. The organization's tokens
@@ -385,7 +385,7 @@ use the immutable subject form (`repo:figentra@314302700/<repo>@<repo-id>:…`),
 created on 2026-10-30 for figentra/stackra:
 
 ```bash
-aws iam create-role --role-name stackra-testbed-deploy --profile academorix --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"arn:aws:iam::591473336656:oidc-provider/token.actions.githubusercontent.com"},"Action":"sts:AssumeRoleWithWebIdentity","Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com","token.actions.githubusercontent.com:sub":["repo:figentra/stackra:environment:testbed","repo:figentra@314302700/stackra@1425140001:environment:testbed"]}}}]}'
+aws iam create-role --role-name stackra-testbed-deploy --profile figentra --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"arn:aws:iam::591473336656:oidc-provider/token.actions.githubusercontent.com"},"Action":"sts:AssumeRoleWithWebIdentity","Condition":{"StringEquals":{"token.actions.githubusercontent.com:aud":"sts.amazonaws.com","token.actions.githubusercontent.com:sub":["repo:figentra/stackra:environment:testbed","repo:figentra@314302700/stackra@1425140001:environment:testbed"]}}}]}'
 ```
 
 For this repository the owner adds the figentra/testbed subjects to that trust policy
@@ -397,11 +397,11 @@ Its rights: everything but IAM (`PowerUserAccess`), plus IAM only for the testbe
 and never for itself (the deny keeps it from granting its own role more):
 
 ```bash
-aws iam attach-role-policy --role-name stackra-testbed-deploy --policy-arn arn:aws:iam::aws:policy/PowerUserAccess --profile academorix
+aws iam attach-role-policy --role-name stackra-testbed-deploy --policy-arn arn:aws:iam::aws:policy/PowerUserAccess --profile figentra
 ```
 
 ```bash
-aws iam put-role-policy --role-name stackra-testbed-deploy --policy-name testbed-iam --profile academorix --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*Role","iam:*Roles","iam:*RolePolicy","iam:*RolePolicies","iam:*InstanceProfile","iam:*InstanceProfiles","iam:*RoleFromInstanceProfile","iam:*RoleToInstanceProfile","iam:TagRole","iam:UntagRole","iam:TagInstanceProfile","iam:PassRole"],"Resource":["arn:aws:iam::591473336656:role/stackra-testbed-*","arn:aws:iam::591473336656:instance-profile/stackra-testbed-*"]},{"Effect":"Allow","Action":"iam:CreateServiceLinkedRole","Resource":"*"},{"Sid":"NeverItsOwnRole","Effect":"Deny","Action":"iam:*","Resource":"arn:aws:iam::591473336656:role/stackra-testbed-deploy"}]}'
+aws iam put-role-policy --role-name stackra-testbed-deploy --policy-name testbed-iam --profile figentra --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*Role","iam:*Roles","iam:*RolePolicy","iam:*RolePolicies","iam:*InstanceProfile","iam:*InstanceProfiles","iam:*RoleFromInstanceProfile","iam:*RoleToInstanceProfile","iam:TagRole","iam:UntagRole","iam:TagInstanceProfile","iam:PassRole"],"Resource":["arn:aws:iam::591473336656:role/stackra-testbed-*","arn:aws:iam::591473336656:instance-profile/stackra-testbed-*"]},{"Effect":"Allow","Action":"iam:CreateServiceLinkedRole","Resource":"*"},{"Sid":"NeverItsOwnRole","Effect":"Deny","Action":"iam:*","Resource":"arn:aws:iam::591473336656:role/stackra-testbed-deploy"}]}'
 ```
 
 Then in GitHub, figentra/testbed, Settings, Environments, New environment `testbed`: deployment branches **main**
@@ -443,7 +443,7 @@ rename before the first run here. `build-image` runs in eu-west-1 only.
 
 1. **Stop the old boxes:** any old box in the region must be stopped first, because it uses the same quota.
 2. **Check the image is there:** the region must already hold the image, so that
-   `aws ssm get-parameter --name /imagebuilder/stackra-testbed/ami --region <region> --profile academorix` returns an
+   `aws ssm get-parameter --name /imagebuilder/stackra-testbed/ami --region <region> --profile figentra` returns an
    AMI. A build after the four-region distribution put it there.
 3. **Apply the region:** **action** `up`, **region** `<region>`, **groups** ticked, heavy `0`, light `0`, through the
    new-region path that may create the region's stack. That declares the security group, the launch template and the
